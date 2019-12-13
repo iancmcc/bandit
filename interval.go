@@ -34,7 +34,7 @@ var (
 )
 
 func (ival *Interval) SetInterval(lowerBound BoundType, lower, upper uint64, upperBound BoundType) *Interval {
-	ival.nodes = ival.array[0:1]
+	ival.nodes = ival.array[:1]
 	var (
 		lul, rul    bool
 		left, right uint
@@ -58,5 +58,20 @@ func (ival *Interval) SetInterval(lowerBound BoundType, lower, upper uint64, upp
 		rul = true
 	}
 	ival.mergeRoot(&ival.Tree, &ival.Tree, left, right, lul, rul, and)
+	return ival
+}
+
+func (ival *Interval) Intersection(other *Interval) *Interval {
+	ival.mergeRoot(&ival.Tree, &other.Tree, ival.root, other.root, ival.ul, other.ul, and)
+	return ival
+}
+
+func (ival *Interval) Union(other *Interval) *Interval {
+	ival.mergeRoot(&ival.Tree, &other.Tree, ival.root, other.root, ival.ul, other.ul, or)
+	return ival
+}
+
+func (ival *Interval) SymmetricDifference(other *Interval) *Interval {
+	ival.mergeRoot(&ival.Tree, &other.Tree, ival.root, other.root, ival.ul, other.ul, xor)
 	return ival
 }

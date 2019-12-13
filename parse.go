@@ -16,12 +16,32 @@ const (
 	stageUpperBound
 )
 
-func (ival *Interval) ParseInterval(b []byte) error {
-	return ival.parse(bytes.NewReader(b))
+func (ival *Interval) ParseInterval(b []byte) (*Interval, error) {
+	if err := ival.parse(bytes.NewReader(b)); err != nil {
+		return nil, err
+	}
+	return ival, nil
 }
 
-func (ival *Interval) ParseIntervalString(s string) error {
-	return ival.parse(strings.NewReader(s))
+func (ival *Interval) ParseIntervalString(s string) (*Interval, error) {
+	if err := ival.parse(strings.NewReader(s)); err != nil {
+		return nil, err
+	}
+	return ival, nil
+}
+
+func (ival *Interval) MustParseInterval(b []byte) *Interval {
+	if _, err := ival.ParseInterval(b); err != nil {
+		panic(err)
+	}
+	return ival
+}
+
+func (ival *Interval) MustParseIntervalString(s string) *Interval {
+	if _, err := ival.ParseIntervalString(s); err != nil {
+		panic(err)
+	}
+	return ival
 }
 
 func (ival *Interval) parse(src io.Reader) error {
