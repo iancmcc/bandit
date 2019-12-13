@@ -1,11 +1,21 @@
 package bandit
 
+import (
+	"strconv"
+	"strings"
+)
+
 type operation uint8
 
 const (
 	and operation = iota
 	or
 	xor
+)
+
+const (
+	empty    = "(Ø)"
+	infinite = "(-∞, ∞)"
 )
 
 type (
@@ -19,10 +29,11 @@ type (
 		incl   bool
 	}
 	Tree struct {
-		nodes    []node
 		root     uint
 		nextfree uint
 		numfree  uint
+		ul       bool
+		nodes    []node
 	}
 )
 
@@ -148,23 +159,14 @@ func (t *Tree) join(at, bt *Tree, a, b uint, aul, bul bool, op operation) uint {
 }
 
 func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) uint {
+	if a == 0 && b == 0 {
+		return 0
+	}
 	if a == 0 {
-		switch op {
-		case or, xor:
-			return t.takeOwnership(bt, b)
-		case and:
-			t.free(bt, b)
-			return 0
-		}
+		return t.overlap(bt, b, aul, op)
 	}
 	if b == 0 {
-		switch op {
-		case or, xor:
-			return t.takeOwnership(at, a)
-		case and:
-			t.free(at, a)
-			return 0
-		}
+		return t.overlap(at, a, bul, op)
 	}
 	an, bn := &at.nodes[a], &bt.nodes[b]
 	switch {
@@ -243,7 +245,93 @@ func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) uint 
 	}
 }
 
-func (t *Tree) each(f func(Interval) bool) {
-	stack := make([]node, 0, uint(len(t.nodes))-t.numfree)
-	stack = append(stack, t.nodes[t.root])
+func (t *Tree) mergeRoot(at, bt *Tree, a, b uint, aul, bul bool, op operation) {
+	t.root = t.merge(at, bt, a, b, aul, bul, op)
+	switch op {
+	case and:
+		t.ul = aul && bul
+	case or:
+		t.ul = aul || bul
+	case xor:
+		t.ul = aul != bul
+	}
+}
+
+func (t *Tree) String() string {
+	if t.root == 0 {
+		if t.ul {
+			return infinite
+		}
+		return empty
+	}
+	var (
+		sb      strings.Builder
+		stack   = make([]uint, 0, len(t.nodes)-int(t.numfree))
+		ulstack = make([]bool, 0, len(t.nodes)-int(t.numfree))
+		n       uint
+		cur     node
+		ul      bool
+	)
+	stack = append(stack, t.root)
+	ulstack = append(ulstack, t.ul)
+	for l := 1; l > 0; l = len(stack) {
+		n, stack = stack[l-1], stack[:l-1]
+		ul, ulstack = ulstack[l-1], ulstack[:l-1]
+		cur = t.nodes[n]
+		if cur.level != 0 {
+			// This is a branch, so add its children (right first, so we visit
+			// left first)
+			stack = append(stack, cur.right, cur.left)
+			// Reuse cur for left
+			cur = t.nodes[cur.left]
+			ulstack = append(ulstack, ul != cur.ul, ul)
+			continue
+		}
+		// cur is a leaf
+		v := strconv.FormatUint(cur.prefix, 10)
+		switch {
+		case cur.incl && cur.ul:
+			// bound below
+			if ul {
+				// Closing an interval
+				sb.WriteString(v)
+				sb.WriteString(")")
+			} else {
+				// Opening an interval
+				sb.WriteString("[")
+				sb.WriteString(v)
+				sb.WriteString(", ")
+			}
+		case !cur.incl && cur.ul:
+			// bound above
+			if ul {
+				// Closing an interval
+				sb.WriteString(v)
+				sb.WriteString("]")
+			} else {
+				// Opening an interval
+				sb.WriteString("(")
+				sb.WriteString(v)
+				sb.WriteString(", ")
+			}
+		case cur.incl && !cur.ul:
+			// bound both
+			if ul {
+				// Hole
+				sb.WriteString(v)
+				sb.WriteString("), ")
+				sb.WriteString("(")
+				sb.WriteString(v)
+				sb.WriteString(", ")
+			} else {
+				// Point
+				sb.WriteString("[")
+				sb.WriteString(v)
+				sb.WriteString(", ")
+				sb.WriteString(v)
+				sb.WriteString("]")
+			}
+		}
+	}
+	return sb.String()
 }

@@ -2,44 +2,27 @@ package bandit_test
 
 import (
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
 	. "github.com/iancmcc/bandit"
 )
 
-func runit() {
-	var ival Interval
-	Set(&ival, ClosedBound, 10, 20, OpenBound)
-	Ω(ival.String()).Should(BeTrue())
-}
-
 var _ = Describe("Interval", func() {
 
-	/*
-		It("should do things right", func() {
-			ival, err := Uint("hi")
-			Ω(err).Should(MatchError(ErrInvalidInterval))
-
-			ival, err = Uint("[10, 20]")
+	DescribeTable("parsing intervals",
+		func(s string, lowerBound BoundType, lower, upper int, upperBound BoundType) {
+			var ival, expected Interval
+			err := ival.ParseIntervalString(s)
 			Ω(err).ShouldNot(HaveOccurred())
+			expected.SetInterval(lowerBound, uint64(lower), uint64(upper), upperBound)
+			Ω(ival.String()).Should(Equal(expected.String()))
+		},
+		Entry("()", "(11, 29)", OpenBound, 11, 29, OpenBound),
+		Entry("[]", "[12, 28]", ClosedBound, 12, 28, ClosedBound),
+		Entry("(]", "(13, 27]", OpenBound, 13, 27, ClosedBound),
+		Entry("[)", "[14, 26)", ClosedBound, 14, 26, OpenBound),
+		Entry("unbound", "(-inf, inf)", UnboundBound, 0, 0, UnboundBound),
+	)
 
-			Ω(ival.IsEmpty()).Should(BeFalse())
-			Ω(ival.String()).Should(Equal("[10, 20]"))
-
-			ival, err = Uint("(-∞, 20]")
-			Ω(err).ShouldNot(HaveOccurred())
-			Ω(ival.String()).Should(Equal("(-∞, 20]"))
-
-			ival, err = Int("(-10, 20)")
-			Ω(err).ShouldNot(HaveOccurred())
-			Ω(ival.String()).Should(Equal("(-10, 20)"))
-
-			ival, err = Float("(-10.1, 20.3345)")
-			Ω(err).ShouldNot(HaveOccurred())
-			Ω(ival.String()).Should(Equal("(-10.1, 20.3345)"))
-		})
-
-	*/
-
-	It("should go", runit)
 })

@@ -1,5 +1,9 @@
 package bandit
 
+import (
+	"errors"
+)
+
 type (
 	// Interval is an interval
 	Interval struct {
@@ -12,19 +16,24 @@ type (
 )
 
 const (
-	UnboundBound = iota
+	UnboundBound BoundType = iota
 	ClosedBound
 	OpenBound
 )
 
-/*
-func set(ival *Interval, at, bt *Tree, lower, upper node, lul, rul bool) {
-	ival.nodes = ival.array[0:2]
-	ival.root = ival.merge(at, bt, lower, upper, lul, rul, and)
-}
-*/
+const (
+	inf     = '∞'
+	lclosed = '['
+	rclosed = ']'
+	lopen   = '('
+	ropen   = ')'
+)
 
-func Set(ival *Interval, lowerBound BoundType, lower, upper uint64, upperBound BoundType) {
+var (
+	ErrInvalidInterval = errors.New("invalid interval")
+)
+
+func (ival *Interval) SetInterval(lowerBound BoundType, lower, upper uint64, upperBound BoundType) *Interval {
 	ival.nodes = ival.array[0:1]
 	var (
 		lul, rul    bool
@@ -48,9 +57,6 @@ func Set(ival *Interval, lowerBound BoundType, lower, upper uint64, upperBound B
 		right = ival.node(upper, 0, 0, 0, true, false)
 		rul = true
 	}
-	ival.root = ival.merge(&ival.Tree, &ival.Tree, left, right, lul, rul, and)
-}
-
-func (ival Interval) String() string {
-	return "hi"
+	ival.mergeRoot(&ival.Tree, &ival.Tree, left, right, lul, rul, and)
+	return ival
 }
