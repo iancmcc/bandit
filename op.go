@@ -1,6 +1,7 @@
 package bandit
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -14,16 +15,38 @@ const (
 )
 
 const (
-	empty    = "(Ø)"
-	infinite = "(-∞, ∞)"
+	LOGGING = false
 )
+
+var indent = ""
+
+func enter(s ...interface{}) func() {
+	if !LOGGING {
+		return func() {}
+	}
+	fmt.Println(indent, "->", s)
+	i := indent
+	indent += "  "
+	exit := func() {
+		fmt.Println(i, "<-", s)
+		indent = indent[:len(indent)-2]
+	}
+	return exit
+}
+
+func log(s ...interface{}) {
+	if !LOGGING {
+		return
+	}
+	fmt.Println(indent, "  ", s)
+}
 
 type (
 	node struct {
 		prefix uint64
+		level  uint
 		left   uint
 		right  uint
-		level  uint
 		ul     bool
 		incl   bool
 	}
@@ -36,7 +59,19 @@ type (
 	}
 )
 
-func (t *Tree) node(prefix uint64, level, left, right uint, ul, incl bool) uint {
+func (n node) Equals(other node) bool {
+	return (n.prefix == other.prefix &&
+		n.level == other.level &&
+		n.ul == other.ul &&
+		n.incl == other.incl)
+}
+
+func (n node) String() string {
+	return fmt.Sprintf(`[ [%d] %b (%d) L:%d R:%d UL:%t INCL:%t ]`,
+		n.level, n.prefix, n.prefix, n.left, n.right, n.ul, n.incl)
+}
+
+func (t *Tree) node(prefix uint64, level, left, right uint, ul, incl bool) (idx uint) {
 	return t.cp(node{
 		prefix: prefix,
 		level:  level,
@@ -47,60 +82,75 @@ func (t *Tree) node(prefix uint64, level, left, right uint, ul, incl bool) uint 
 	})
 }
 
-func (t *Tree) cp(n node) uint {
+func (t *Tree) cp(n node) (idx uint) {
+	defer func() { log("ALLOCATING", idx, n) }()
 	if t.numfree > 0 {
-		idx := t.nextfree
+		idx = t.nextfree
 		t.nextfree = t.nodes[idx].left
 		t.nodes[idx] = n
 		t.numfree -= 1
-		return idx
+		return
 	}
 	t.nodes = append(t.nodes, n)
-	return uint(len(t.nodes) - 1)
+	idx = uint(len(t.nodes) - 1)
+	return
 }
 
-func (t *Tree) takeOwnership(src *Tree, idx uint) uint {
+func (t *Tree) takeOwnership(src *Tree, idx uint) (nidx uint) {
 	if src == t {
 		// We're the owner already
 		return idx
 	}
+	if idx == 0 {
+		return 0
+	}
+	defer func() { log("TAKING OWNERSHIP OF", nidx) }()
 	n := src.nodes[idx]
 	if n.left > 0 {
 		n.left = t.takeOwnership(src, n.left)
 	}
 	if n.right > 0 {
-		n.right = t.takeOwnership(src, n.left)
+		n.right = t.takeOwnership(src, n.right)
 	}
 	return t.cp(n)
 }
 
-func (t *Tree) free(src *Tree, idx uint) {
+func (t *Tree) free(src *Tree, idx uint, recursive bool) {
 	if src != t {
 		// Don't free nodes for a different tree
 		return
 	}
-	n := &t.nodes[idx]
-	if n.left > 0 {
-		t.free(t, n.left)
+	if idx == 0 {
+		return
 	}
-	if n.right > 0 {
-		t.free(t, n.right)
+	n := src.nodes[idx]
+	log("FREEING", idx, n)
+	if recursive && n.left > 0 {
+		t.free(src, n.left, recursive)
+	}
+	if recursive && n.right > 0 {
+		t.free(src, n.right, recursive)
 	}
 	t.nodes[idx] = node{left: t.nextfree}
 	t.nextfree = idx
 	t.numfree += 1
 }
 
-func (t *Tree) overlap(at *Tree, a uint, bul bool, op operation) uint {
+func (t *Tree) overlap(at *Tree, a uint, bul bool, op operation) (idx uint) {
+	defer enter("OVERLAP", at.nodes[a], bul)()
+	defer func() { log("OVERLAP RETURNED", at.nodes[idx]) }()
 	if (op == or && bul) || (op == and && !bul) {
-		t.free(at, a)
-		return 0
+		t.free(at, a, true)
+		idx = 0
+		return
 	}
-	return a
+	idx = a
+	return
 }
 
 func (t *Tree) collision(at, bt *Tree, a, b uint, aul, bul bool, op operation) uint {
-	an, bn := &at.nodes[a], &bt.nodes[b]
+	an, bn := at.nodes[a], bt.nodes[b]
+	defer enter("COLLISION", a, an, b, bn, aul, bul)()
 	var below, includes, above, boundBelow, boundAbove, unbounded bool
 	switch op {
 	case or:
@@ -120,21 +170,23 @@ func (t *Tree) collision(at, bt *Tree, a, b uint, aul, bul bool, op operation) u
 	unbounded = boundBelow != boundAbove
 	switch {
 	case !boundBelow && !boundAbove:
-		t.free(at, a)
-		t.free(bt, b)
+		t.free(at, a, true)
+		t.free(bt, b, true)
 		return 0
 	case boundBelow == an.incl && unbounded == an.ul:
-		t.free(bt, b)
+		t.free(bt, b, true)
 		return t.takeOwnership(at, a)
 	case boundBelow == bn.incl && unbounded == bn.ul:
-		t.free(at, a)
+		t.free(at, a, true)
 		return t.takeOwnership(bt, b)
 	}
 	return t.node(an.prefix, 0, 0, 0, unbounded, boundBelow)
 }
 
-func (t *Tree) join(at, bt *Tree, a, b uint, aul, bul bool, op operation) uint {
-	an, bn := &at.nodes[a], &bt.nodes[b]
+func (t *Tree) join(at, bt *Tree, a, b uint, aul, bul bool, op operation) (idx uint) {
+	an, bn := at.nodes[a], bt.nodes[b]
+	defer enter("JOIN", a, an, b, bn)()
+	defer func() { log("JOIN RETURNED", idx, t.nodes[idx]) }()
 	level := BranchingBit(an.prefix, bn.prefix)
 	prefix := MaskAbove(an.prefix, level)
 	var (
@@ -151,41 +203,51 @@ func (t *Tree) join(at, bt *Tree, a, b uint, aul, bul bool, op operation) uint {
 		right, rt = t.overlap(at, a, rul, op), at
 	}
 	if left == 0 {
-		return t.takeOwnership(rt, right)
+		idx = t.takeOwnership(rt, right)
+	} else if right == 0 {
+		idx = t.takeOwnership(lt, left)
+	} else {
+		idx = t.node(prefix, level, t.takeOwnership(lt, left), t.takeOwnership(rt, right), (&t.nodes[left]).ul != (&t.nodes[right]).ul, false)
 	}
-	if right == 0 {
-		return t.takeOwnership(lt, left)
-	}
-	return t.node(prefix, level, t.takeOwnership(lt, left), t.takeOwnership(rt, right), (&t.nodes[left]).ul != (&t.nodes[right]).ul, false)
+	return
 }
 
-func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) uint {
+func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) (idx uint) {
+	//defer enter("MERGE", a, at.nodes[a], b, bt.nodes[b], aul, bul)()
+	//defer func() { log("MERGE RETURNED", idx, t.nodes[idx]) }()
 	if a == 0 && b == 0 {
-		return 0
+		idx = 0
+		return
 	}
 	if a == 0 {
-		return t.takeOwnership(bt, t.overlap(bt, b, aul, op))
+		idx = t.takeOwnership(bt, t.overlap(bt, b, aul, op))
+		return
 	}
 	if b == 0 {
-		return t.takeOwnership(at, t.overlap(at, a, bul, op))
+		idx = t.takeOwnership(at, t.overlap(at, a, bul, op))
+		return
 	}
-	an, bn := &at.nodes[a], &bt.nodes[b]
+	an, bn := at.nodes[a], bt.nodes[b]
 	switch {
 	case an.level > bn.level:
+		log("branch 1")
 		if !IsPrefixAt(bn.prefix, an.prefix, an.level) {
 			// disjoint trees; encompass
-			return t.join(at, bt, a, b, aul, bul, op)
+			idx = t.join(at, bt, a, b, aul, bul, op)
+			return
 		}
 		// b is somewhere under a
 		var (
 			left, right uint
 			lt, rt      *Tree
 		)
+		// Won't be needing a again
+		t.free(at, a, false)
 		if ZeroAt(bn.prefix, an.level) {
+			rul := bul != bn.ul
 			// b is under the left side of a
-			lul := bul != (&t.nodes[an.right]).ul
 			left, lt = t.merge(at, bt, an.left, b, aul, bul, op), t
-			right, rt = t.overlap(at, an.right, lul, op), at
+			right, rt = t.overlap(at, an.right, rul, op), at
 		} else {
 			// b is under the right side of a
 			rul := aul != (&t.nodes[an.left]).ul
@@ -193,85 +255,82 @@ func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) uint 
 			right, rt = t.merge(at, bt, an.right, b, rul, bul, op), t
 		}
 		if left == 0 {
-			return t.takeOwnership(rt, right)
+			idx = t.takeOwnership(rt, right)
+		} else if right == 0 {
+			idx = t.takeOwnership(lt, left)
+		} else {
+			idx = t.node(an.prefix, an.level, t.takeOwnership(lt, left),
+				t.takeOwnership(rt, right),
+				(&t.nodes[left]).ul != (&t.nodes[right]).ul,
+				false)
 		}
-		if right == 0 {
-			return t.takeOwnership(lt, left)
-		}
-		return t.node(an.prefix, an.level, t.takeOwnership(lt, left), t.takeOwnership(rt, right), (&t.nodes[left]).ul != (&t.nodes[right]).ul, false)
+		return
 	case bn.level > an.level:
+		log("branch 2")
 		if !IsPrefixAt(an.prefix, bn.prefix, bn.level) {
 			// disjoint trees; encompass
-			return t.join(at, bt, a, b, aul, bul, op)
+			idx = t.join(at, bt, a, b, aul, bul, op)
+			return
 		}
 		// a is somewhere under b
 		var (
 			left, right uint
 			lt, rt      *Tree
 		)
+		t.free(bt, b, false)
 		if ZeroAt(an.prefix, bn.level) {
 			// a is under the left side of b
-			lul := aul != (&t.nodes[an.left]).ul
+			lul := aul != an.ul
 			left, lt = t.merge(at, bt, a, bn.left, aul, bul, op), t
 			right, rt = t.overlap(bt, bn.right, lul, op), bt
 		} else {
-			// a is under the right side of b
-			rul := bul != (&t.nodes[an.right]).ul
+			rul := bul != (&t.nodes[bn.right]).ul
 			left, lt = t.overlap(bt, bn.left, aul, op), bt
 			right, rt = t.merge(at, bt, a, bn.right, aul, rul, op), t
 		}
 		if left == 0 {
-			return t.takeOwnership(rt, right)
+			log("TAKING RIGHT OWNERSHIP", right)
+			idx = t.takeOwnership(rt, right)
+		} else if right == 0 {
+			log("TAKING LEFT OWNERSHIP", right)
+			idx = t.takeOwnership(lt, left)
+		} else {
+			log("NEW PARENT NODE")
+			idx = t.node(bn.prefix, bn.level, t.takeOwnership(lt, left),
+				t.takeOwnership(rt, right),
+				(&t.nodes[left]).ul != (&t.nodes[right]).ul,
+				false)
 		}
-		if right == 0 {
-			return t.takeOwnership(lt, left)
-		}
-		return t.node(bn.prefix, bn.level, t.takeOwnership(lt, left), t.takeOwnership(rt, right), (&t.nodes[left]).ul != (&t.nodes[right]).ul, false)
+		return
 	default: // equal level
+		log("branch 3")
 		if an.prefix != bn.prefix {
 			// disjoint trees; encompass
-			return t.join(at, bt, a, b, aul, bul, op)
+			idx = t.join(at, bt, a, b, aul, bul, op)
+			return
 		}
 		if an.level == 0 {
 			// Two representations of the same leaf
-			return t.collision(at, bt, a, b, aul, bul, op)
+			idx = t.collision(at, bt, a, b, aul, bul, op)
+			return
 		}
 		// Two internal nodes with same prefix; merge left with left, right with right
 		lul := aul != (&t.nodes[an.left]).ul
-		rul := bul != (&t.nodes[an.right]).ul
+		rul := bul != (&t.nodes[bn.left]).ul
 		left := t.merge(at, bt, an.left, bn.left, aul, bul, op)
 		right := t.merge(at, bt, an.right, bn.right, lul, rul, op)
 		// Merge takes ownership, so need to try again here
 		if left == 0 {
-			return right
+			idx = right
+			return
 		}
 		if right == 0 {
-			return left
+			idx = left
+			return
 		}
-		// At this point, the two original nodes just need to be merged into
-		// one, potentially with a different left and right. Find the one
-		// that's this tree and update it.
-		newprefix := an.prefix
-		newlevel := an.level
-		newul := (&t.nodes[left]).ul != (&t.nodes[right]).ul
-		var merged uint
-		switch t {
-		case at:
-			merged = a
-		case bt:
-			merged = b
-		default:
-			return t.node(newprefix, newlevel, left, right, newul, false)
-		}
-		t.nodes[merged] = node{
-			left:   left,
-			right:  right,
-			prefix: newprefix,
-			level:  newlevel,
-			ul:     newul,
-			incl:   false,
-		}
-		return merged
+		newul := (t.nodes[left]).ul != (t.nodes[right]).ul
+		idx = t.node(an.prefix, an.level, left, right, newul, false)
+		return
 	}
 }
 
@@ -294,12 +353,14 @@ func (t *Tree) mergeRoot(at, bt *Tree, a, b uint, aul, bul bool, op operation) {
 }
 
 func (t *Tree) String() string {
-	if t.root == 0 {
-		if t.ul {
-			return infinite
+	/*
+		if t.root == 0 {
+			if t.ul {
+				return infinite
+			}
+			return empty
 		}
-		return empty
-	}
+	*/
 	var (
 		sb      strings.Builder
 		stack   = make([]uint, 0, len(t.nodes)-int(t.numfree))
@@ -312,6 +373,7 @@ func (t *Tree) String() string {
 	ulstack = append(ulstack, t.ul)
 	for l := 1; l > 0; l = len(stack) {
 		n, stack = stack[l-1], stack[:l-1]
+		fmt.Println("HANDLING", n)
 		ul, ulstack = ulstack[l-1], ulstack[:l-1]
 		cur = t.nodes[n]
 		if cur.level != 0 {
@@ -366,6 +428,13 @@ func (t *Tree) String() string {
 				sb.WriteString(", ")
 				sb.WriteString(v)
 				sb.WriteString("]")
+			}
+		default:
+			// unbound
+			if ul {
+				sb.WriteString("∞), ")
+			} else {
+				sb.WriteString("(-∞, ")
 			}
 		}
 	}

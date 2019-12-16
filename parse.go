@@ -16,40 +16,38 @@ const (
 	stageUpperBound
 )
 
-func (ival *Interval) ParseInterval(b []byte) (*Interval, error) {
-	if err := ival.parse(bytes.NewReader(b)); err != nil {
-		return nil, err
-	}
-	return ival, nil
+func ParseInterval(b []byte) (Interval, error) {
+	return parse(bytes.NewReader(b))
 }
 
-func (ival *Interval) ParseIntervalString(s string) (*Interval, error) {
-	if err := ival.parse(strings.NewReader(s)); err != nil {
-		return nil, err
-	}
-	return ival, nil
+func ParseIntervalString(s string) (Interval, error) {
+	return parse(strings.NewReader(s))
 }
 
-func (ival *Interval) MustParseInterval(b []byte) *Interval {
-	if _, err := ival.ParseInterval(b); err != nil {
+func MustParseInterval(b []byte) Interval {
+	ival, err := ParseInterval(b)
+	if err != nil {
 		panic(err)
 	}
 	return ival
 }
 
-func (ival *Interval) MustParseIntervalString(s string) *Interval {
-	if _, err := ival.ParseIntervalString(s); err != nil {
+func MustParseIntervalString(s string) Interval {
+	ival, err := ParseIntervalString(s)
+	if err != nil {
 		panic(err)
 	}
 	return ival
 }
 
-func (ival *Interval) parse(src io.Reader) error {
+func isIdent(ch rune, i int) bool {
+	return ch == '-' && i == 0 || unicode.IsLetter(ch) || unicode.IsDigit(ch) && i > 0
+}
+
+func parse(src io.Reader) (ival Interval, err error) {
 	var s scanner.Scanner
 	s.Init(src)
-	s.IsIdentRune = func(ch rune, i int) bool {
-		return ch == '-' && i == 0 || unicode.IsLetter(ch) || unicode.IsDigit(ch) && i > 0
-	}
+	s.IsIdentRune = isIdent
 
 	stage := stageLowerBound
 
@@ -66,7 +64,8 @@ out:
 			case '[':
 				lowerBound = ClosedBound
 			default:
-				return ErrInvalidInterval
+				err = ErrInvalidInterval
+				return
 			}
 			stage = stageLower
 		case stageLower:
@@ -75,9 +74,10 @@ out:
 			case "-∞", "-inf", "-Inf":
 				lowerBound = UnboundBound
 			default:
-				l, err := strconv.ParseUint(t, 10, 64)
-				if err != nil {
-					return ErrInvalidInterval
+				l, perr := strconv.ParseUint(t, 10, 64)
+				if perr != nil {
+					err = ErrInvalidInterval
+					return
 				}
 				lower = l
 			}
@@ -91,9 +91,10 @@ out:
 				upperBound = UnboundBound
 				break out
 			default:
-				u, err := strconv.ParseUint(t, 10, 64)
-				if err != nil {
-					return ErrInvalidInterval
+				u, perr := strconv.ParseUint(t, 10, 64)
+				if perr != nil {
+					err = ErrInvalidInterval
+					return
 				}
 				upper = u
 				stage = stageUpperBound
@@ -105,10 +106,10 @@ out:
 			case ']':
 				upperBound = ClosedBound
 			default:
-				return ErrInvalidInterval
+				err = ErrInvalidInterval
+				return
 			}
 		}
 	}
-	ival.SetInterval(lowerBound, lower, upper, upperBound)
-	return nil
+	return NewInterval(lowerBound, lower, upper, upperBound), nil
 }
