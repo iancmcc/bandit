@@ -4,6 +4,8 @@ type IntervalIterator struct {
 	t         Tree
 	nodestack []uint
 	ulstack   []bool
+	ival      Interval
+	done      bool
 }
 
 func NewIntervalIterator(t Tree) *IntervalIterator {
@@ -14,10 +16,17 @@ func NewIntervalIterator(t Tree) *IntervalIterator {
 		t:         t,
 		nodestack: nodestack,
 		ulstack:   ulstack,
+		ival:      Empty(),
 	}
 }
 
-func (it *IntervalIterator) Next() (ival Interval) {
+func (it *IntervalIterator) Interval() (ival Interval) {
+	return it.ival
+}
+func (it *IntervalIterator) Next() bool {
+	if it.done {
+		return false
+	}
 	var (
 		l         = len(it.nodestack)
 		n         uint
@@ -25,6 +34,11 @@ func (it *IntervalIterator) Next() (ival Interval) {
 		cur       node
 		idx, left uint
 	)
+	if l == 0 {
+		it.done = true
+		return false
+	}
+	it.ival.Reset()
 	for ; l > 0; l = len(it.nodestack) {
 		n, it.nodestack = it.nodestack[l-1], it.nodestack[:l-1]
 		ul, it.ulstack = it.ulstack[l-1], it.ulstack[:l-1]
@@ -41,32 +55,36 @@ func (it *IntervalIterator) Next() (ival Interval) {
 		// cur is a leaf
 		if cur.ul {
 			// This node is part of a single interval
-			idx = ival.Tree.takeOwnership(&it.t, n)
+			idx = it.ival.Tree.takeOwnership(&it.t, n)
 			if !ul {
 				// Opening an interval
 				left = idx
 				continue
 			}
 			// Closing an interval
-			ival.mergeRoot(&ival.Tree, &ival.Tree, left, idx, true, true, and)
+			it.ival.mergeRoot(&it.ival.Tree, &it.ival.Tree, left, idx, false, cur.ul, and)
 		} else {
 			// This node is either a hole or a point
 			if !ul {
 				// Point
-				ival.root = ival.Tree.takeOwnership(&it.t, n)
-				return
+				it.ival.root = it.ival.Tree.takeOwnership(&it.t, n)
+				return true
 			}
 			// Hole
 			// Close what we've got
-			ival.mergeRoot(&ival.Tree, &ival.Tree, left, idx, true, true, and)
+			it.ival.mergeRoot(&it.ival.Tree, &it.ival.Tree, left, idx, false, cur.ul, and)
 			// Push this node back on the stack, updating it to open the next
 			// interval
 			cur.ul = true
 			it.nodestack = append(it.nodestack, n)
 			it.ulstack = append(it.ulstack, false)
 		}
-		return
+		return true
 	}
-	ival.mergeRoot(&ival.Tree, &ival.Tree, left, 0, true, true, and)
-	return
+	it.ival.mergeRoot(&it.ival.Tree, &it.ival.Tree, left, 0, true, true, and)
+	if it.ival.IsEmpty() {
+		it.done = true
+		return false
+	}
+	return true
 }

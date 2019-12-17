@@ -36,8 +36,7 @@ var (
 	}
 )
 
-func NewInterval(lowerBound BoundType, lower, upper uint64, upperBound BoundType) Interval {
-	var ival Interval
+func NewInterval(lowerBound BoundType, lower, upper uint64, upperBound BoundType) (ival Interval) {
 	ival.nodes = ival.array[:1] // Fix malloc later; for now we're escaping
 	var (
 		lul, rul    bool
@@ -107,13 +106,7 @@ func (ival Interval) IsEmpty() bool {
 }
 
 func (ival Interval) Equals(other Interval) bool {
-	if ival.ul != other.ul {
-		return false
-	}
-	a, b := ival.nodes[ival.root], other.nodes[other.root]
-	return (a.Equals(b) &&
-		ival.nodes[a.left].Equals(other.nodes[b.left]) &&
-		ival.nodes[a.right].Equals(other.nodes[b.right]))
+	return ival.ul == other.ul && treeEquals(&ival.Tree, &other.Tree, ival.root, other.root)
 }
 
 func LeftOpen(lower, upper uint64) Interval {

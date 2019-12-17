@@ -2,7 +2,6 @@ package bandit
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -58,6 +57,20 @@ type (
 		nodes    []node
 	}
 )
+
+func treeEquals(at *Tree, bt *Tree, a, b uint) bool {
+	an, bn := at.nodes[a], bt.nodes[b]
+	if !an.Equals(bn) {
+		return false
+	}
+	if an.left != 0 && !treeEquals(at, bt, an.left, bn.left) {
+		return false
+	}
+	if an.right != 0 && !treeEquals(at, bt, an.right, bn.right) {
+		return false
+	}
+	return true
+}
 
 func (n node) Equals(other node) bool {
 	return (n.prefix == other.prefix &&
@@ -338,6 +351,8 @@ func (t *Tree) Reset() {
 	t.root = 0
 	t.nodes = t.nodes[:1]
 	t.ul = false
+	t.numfree = 0
+	t.nextfree = 0
 }
 
 func (t *Tree) mergeRoot(at, bt *Tree, a, b uint, aul, bul bool, op operation) {
@@ -353,90 +368,10 @@ func (t *Tree) mergeRoot(at, bt *Tree, a, b uint, aul, bul bool, op operation) {
 }
 
 func (t *Tree) String() string {
-	/*
-		if t.root == 0 {
-			if t.ul {
-				return infinite
-			}
-			return empty
-		}
-	*/
-	var (
-		sb      strings.Builder
-		stack   = make([]uint, 0, len(t.nodes)-int(t.numfree))
-		ulstack = make([]bool, 0, len(t.nodes)-int(t.numfree))
-		n       uint
-		cur     node
-		ul      bool
-	)
-	stack = append(stack, t.root)
-	ulstack = append(ulstack, t.ul)
-	for l := 1; l > 0; l = len(stack) {
-		n, stack = stack[l-1], stack[:l-1]
-		fmt.Println("HANDLING", n)
-		ul, ulstack = ulstack[l-1], ulstack[:l-1]
-		cur = t.nodes[n]
-		if cur.level != 0 {
-			// This is a branch, so add its children (right first, so we visit
-			// left first)
-			stack = append(stack, cur.right, cur.left)
-			// Reuse cur for left
-			cur = t.nodes[cur.left]
-			ulstack = append(ulstack, ul != cur.ul, ul)
-			continue
-		}
-		// cur is a leaf
-		v := strconv.FormatUint(cur.prefix, 10)
-		switch {
-		case cur.incl && cur.ul:
-			// bound below
-			if ul {
-				// Closing an interval
-				sb.WriteString(v)
-				sb.WriteString(")")
-			} else {
-				// Opening an interval
-				sb.WriteString("[")
-				sb.WriteString(v)
-				sb.WriteString(", ")
-			}
-		case !cur.incl && cur.ul:
-			// bound above
-			if ul {
-				// Closing an interval
-				sb.WriteString(v)
-				sb.WriteString("]")
-			} else {
-				// Opening an interval
-				sb.WriteString("(")
-				sb.WriteString(v)
-				sb.WriteString(", ")
-			}
-		case cur.incl && !cur.ul:
-			// bound both
-			if ul {
-				// Hole
-				sb.WriteString(v)
-				sb.WriteString("), ")
-				sb.WriteString("(")
-				sb.WriteString(v)
-				sb.WriteString(", ")
-			} else {
-				// Point
-				sb.WriteString("[")
-				sb.WriteString(v)
-				sb.WriteString(", ")
-				sb.WriteString(v)
-				sb.WriteString("]")
-			}
-		default:
-			// unbound
-			if ul {
-				sb.WriteString("∞), ")
-			} else {
-				sb.WriteString("(-∞, ")
-			}
-		}
+	s := []string{}
+	iterator := NewIntervalIterator(*t)
+	for iterator.Next() {
+		s = append(s, iterator.Interval().String())
 	}
-	return sb.String()
+	return strings.Join(s, ", ")
 }
