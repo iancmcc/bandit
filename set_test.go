@@ -8,22 +8,22 @@ import (
 	. "github.com/iancmcc/bandit"
 )
 
-func doIntervalSetOp(op string, a, b IntervalSet) IntervalSet {
+func doIntervalSetOp(op string, a, b *IntervalSet) *IntervalSet {
 	switch op {
 	case "&":
-		return a.Intersection(b)
+		return a.Intersection(a, b)
 	case "|":
-		return a.Union(b)
+		return a.Union(a, b)
 	case "^":
-		return a.SymmetricDifference(b)
+		return a.SymmetricDifference(a, b)
 	case "-":
-		return a.Difference(b)
+		return a.Difference(a, b)
 	}
 	return a
 }
 
 var _ = Describe("Set", func() {
-	var a, b IntervalSet
+	var a, b *IntervalSet
 
 	BeforeEach(func() {
 		a = NewIntervalSet(RightOpen(0, 2), RightOpen(4, 6))
@@ -42,8 +42,8 @@ var _ = Describe("Set", func() {
 
 	It("should report equality correctly", func() {
 		Ω(a.Equals(b)).Should(BeFalse())
-		a = a.Union(b)
-		b = b.Union(a)
+		a.Union(a, b)
+		b.Union(b, a)
 		Ω(a.Equals(b)).Should(BeTrue())
 	})
 

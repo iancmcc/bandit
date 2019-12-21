@@ -38,7 +38,7 @@ func (it *IntervalIterator) Next() bool {
 		it.done = true
 		return false
 	}
-	it.ival.Reset()
+	it.ival.Clear()
 	for ; l > 0; l = len(it.nodestack) {
 		n, it.nodestack = it.nodestack[l-1], it.nodestack[:l-1]
 		ul, it.ulstack = it.ulstack[l-1], it.ulstack[:l-1]

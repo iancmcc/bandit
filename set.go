@@ -1,71 +1,93 @@
 package bandit
 
-import "strings"
+import (
+	"strings"
+)
 
 type (
 	IntervalSet struct {
 		Tree
-		array [1024]node
 	}
 )
 
-func NewIntervalSet(intervals ...Interval) (set IntervalSet) {
-	set.nodes = set.array[:1]
+const defaultNodeArraySize = 32
+
+func NewIntervalSetWithCapacity(capacity uint, intervals ...Interval) *IntervalSet {
+	var set IntervalSet
+	set.nodes = make([]node, 1, capacity)
 	for _, ival := range intervals {
 		set.mergeRoot(&set.Tree, &ival.Tree, set.root, ival.root, set.ul, ival.ul, or)
 	}
-	return
+	return &set
 }
 
-func (set IntervalSet) Iterator() *IntervalIterator {
-	return NewIntervalIterator(set.Tree)
+func NewIntervalSet(intervals ...Interval) *IntervalSet {
+	return NewIntervalSetWithCapacity(defaultNodeArraySize, intervals...)
 }
 
-func (set IntervalSet) String() string {
+func (z *IntervalSet) Iterator() *IntervalIterator {
+	return NewIntervalIterator(z.Tree)
+}
+
+func (z *IntervalSet) String() string {
 	s := []string{}
-	iterator := set.Iterator()
+	iterator := z.Iterator()
 	for iterator.Next() {
 		s = append(s, iterator.Interval().String())
 	}
 	return strings.Join(s, ", ")
 }
 
-func (set IntervalSet) Add(ival Interval) IntervalSet {
-	set.nodes = set.nodes[:len(set.nodes)]
-	set.mergeRoot(&set.Tree, &ival.Tree, set.root, ival.root, set.ul, ival.ul, or)
-	return set
+func (z *IntervalSet) Add(ival Interval) *IntervalSet {
+	z.mergeRoot(&z.Tree, &ival.Tree, z.root, ival.root, z.ul, ival.ul, or)
+	return z
 }
 
-func (set IntervalSet) Complement() IntervalSet {
-	set.nodes = set.nodes[:len(set.nodes)]
-	set.ul = !set.ul
-	return set
+func (z *IntervalSet) Complement(x *IntervalSet) *IntervalSet {
+	if z != x {
+		z.Clear()
+		z.Union(z, x)
+	}
+	z.ul = !z.ul
+	return z
 }
 
-func (set IntervalSet) Intersection(other IntervalSet) IntervalSet {
-	set.nodes = set.nodes[:len(set.nodes)]
-	set.mergeRoot(&set.Tree, &other.Tree, set.root, other.root, set.ul, other.ul, and)
-	return set
+func (z *IntervalSet) Intersection(x, y *IntervalSet) *IntervalSet {
+	switch {
+	case z == x:
+	case z == y:
+		x, y = y, x
+	default:
+		z.Clear()
+	}
+	z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, and)
+	return z
 }
 
-func (set IntervalSet) Union(other IntervalSet) IntervalSet {
-	set.nodes = set.nodes[:len(set.nodes)]
-	set.mergeRoot(&set.Tree, &other.Tree, set.root, other.root, set.ul, other.ul, or)
-	return set
+func (z *IntervalSet) Union(x, y *IntervalSet) *IntervalSet {
+	if z != x && z != y {
+		z.Clear()
+	}
+	z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, or)
+	return z
 }
 
-func (set IntervalSet) SymmetricDifference(other IntervalSet) IntervalSet {
-	set.nodes = set.nodes[:len(set.nodes)]
-	set.mergeRoot(&set.Tree, &other.Tree, set.root, other.root, set.ul, other.ul, xor)
-	return set
+func (z *IntervalSet) SymmetricDifference(x, y *IntervalSet) *IntervalSet {
+	if z != x && z != y {
+		z.Clear()
+	}
+	z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, xor)
+	return z
 }
 
-func (set IntervalSet) Difference(other IntervalSet) IntervalSet {
-	set.nodes = set.nodes[:len(set.nodes)]
-	set.mergeRoot(&set.Tree, &other.Tree, set.root, other.root, set.ul, !other.ul, and)
-	return set
+func (z *IntervalSet) Difference(x, y *IntervalSet) *IntervalSet {
+	if z != x && z != y {
+		z.Clear()
+	}
+	z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, !y.ul, and)
+	return z
 }
 
-func (set IntervalSet) Equals(other IntervalSet) bool {
-	return set.ul == other.ul && treeEquals(&set.Tree, &other.Tree, set.root, other.root)
+func (z *IntervalSet) Equals(other *IntervalSet) bool {
+	return z.ul == other.ul && treeEquals(&z.Tree, &other.Tree, z.root, other.root)
 }
