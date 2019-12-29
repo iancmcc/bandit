@@ -11,6 +11,7 @@ const (
 	and operation = iota
 	or
 	xor
+	common
 )
 
 const (
@@ -44,6 +45,7 @@ type (
 	node struct {
 		prefix uint64
 		level  uint
+		parent uint
 		left   uint
 		right  uint
 		ul     bool
@@ -84,6 +86,18 @@ func (n *node) String() string {
 		n.level, n.prefix, n.prefix, n.left, n.right, n.ul, n.incl)
 }
 
+func (n *node) boundBoth() bool {
+	return n.incl && !n.ul
+}
+
+func (n *node) boundBelow() bool {
+	return n.incl && n.ul
+}
+
+func (n *node) boundAbove() bool {
+	return !n.incl && n.ul
+}
+
 func (t *Tree) node(prefix uint64, level, left, right uint, ul, incl bool) (idx uint) {
 	return t.cp(&node{
 		prefix: prefix,
@@ -95,16 +109,29 @@ func (t *Tree) node(prefix uint64, level, left, right uint, ul, incl bool) (idx 
 	})
 }
 
+func (t *Tree) fix(idx uint) {
+	if idx == 0 {
+		return
+	}
+	n := (&t.nodes[idx])
+	if n.level == 0 {
+		return
+	}
+	(&t.nodes[n.left]).parent = idx
+	(&t.nodes[n.right]).parent = idx
+}
+
 func (t *Tree) cp(n *node) (idx uint) {
 	if t.numfree > 0 {
 		idx = t.nextfree
 		t.nextfree = (&t.nodes[idx]).left
 		t.nodes[idx] = *n
 		t.numfree -= 1
-		return
+	} else {
+		t.nodes = append(t.nodes, *n)
+		idx = uint(len(t.nodes) - 1)
 	}
-	t.nodes = append(t.nodes, *n)
-	idx = uint(len(t.nodes) - 1)
+	t.fix(idx)
 	return
 }
 
@@ -147,7 +174,7 @@ func (t *Tree) free(src *Tree, idx uint, recursive bool) {
 }
 
 func (t *Tree) overlap(at *Tree, a uint, bul bool, op operation) (idx uint) {
-	if (op == or && bul) || (op == and && !bul) {
+	if (op == common) || (op == or && bul) || (op == and && !bul) {
 		t.free(at, a, true)
 		idx = 0
 		return
@@ -160,6 +187,28 @@ func (t *Tree) collision(at, bt *Tree, a, b uint, aul, bul bool, op operation) u
 	an, bn := &at.nodes[a], &bt.nodes[b]
 	var below, includes, above, boundBelow, boundAbove, unbounded bool
 	switch op {
+	case common:
+		if aul != bul || an.incl != bn.incl || an.ul != bn.ul {
+			t.free(at, a, true)
+			t.free(bt, b, true)
+			return 0
+		}
+		if !aul {
+			// Check subsequent node to see if we should keep this one
+			as := at.nextLeaf(a)
+			bs := bt.nextLeaf(b)
+			if !(&at.nodes[as]).Equals(&bt.nodes[bs]) {
+				return 0
+			}
+		} else {
+			ap := at.previousLeaf(a)
+			bp := bt.previousLeaf(b)
+			if !(&at.nodes[ap]).Equals(&bt.nodes[bp]) {
+				return 0
+			}
+		}
+		op = and
+		fallthrough
 	case or:
 		below = aul || bul
 		includes = (an.incl != aul) || (bn.incl != bul)
@@ -235,7 +284,14 @@ func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) (idx 
 	switch {
 	case an.level > bn.level:
 		if !IsPrefixAt(bn.prefix, an.prefix, an.level) {
-			// disjoint trees; encompass
+			// disjoint trees
+			if op == common {
+				t.free(at, a, true)
+				t.free(bt, b, true)
+				idx = 0
+				return
+			}
+			// encompass with a node for common prefix
 			idx = t.join(at, bt, a, b, aul, bul, op)
 			return
 		}
@@ -271,7 +327,14 @@ func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) (idx 
 		return
 	case bn.level > an.level:
 		if !IsPrefixAt(an.prefix, bn.prefix, bn.level) {
-			// disjoint trees; encompass
+			// disjoint trees
+			if op == common {
+				t.free(at, a, true)
+				t.free(bt, b, true)
+				idx = 0
+				return
+			}
+			// encompass with a node for common prefix
 			idx = t.join(at, bt, a, b, aul, bul, op)
 			return
 		}
@@ -307,7 +370,14 @@ func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) (idx 
 		a_left, a_right, b_left, b_right := an.left, an.right, bn.left, bn.right
 		prefix, level := an.prefix, an.level
 		if an.prefix != bn.prefix {
-			// disjoint trees; encompass
+			// disjoint trees
+			if op == common {
+				t.free(at, a, true)
+				t.free(bt, b, true)
+				idx = 0
+				return
+			}
+			// encompass with a node for common prefix
 			idx = t.join(at, bt, a, b, aul, bul, op)
 			return
 		}
@@ -347,7 +417,7 @@ func (t *Tree) Clear() {
 func (t *Tree) mergeRoot(at, bt *Tree, a, b uint, aul, bul bool, op operation) {
 	t.root = t.merge(at, bt, a, b, aul, bul, op)
 	switch op {
-	case and:
+	case and, common:
 		t.ul = aul && bul
 	case or:
 		t.ul = aul || bul
@@ -363,4 +433,127 @@ func (t *Tree) String() string {
 		s = append(s, iterator.Interval().String())
 	}
 	return strings.Join(s, ", ")
+}
+
+func (t *Tree) leftmostLeaf(a uint, ul bool) (uint, bool) {
+	n := t.nodes[a]
+	for n.level != 0 {
+		a = n.left
+		n = t.nodes[a]
+	}
+	return a, ul
+}
+
+func (t *Tree) rightmostLeaf(a uint, ul bool) (uint, bool) {
+	n := t.nodes[a]
+	for n.level != 0 {
+		a = n.right
+		ul = ul != t.nodes[n.left].ul
+		n = t.nodes[a]
+	}
+	return a, ul
+}
+
+func (t *Tree) previousLeaf(a uint) uint {
+	n := &t.nodes[a]
+	if n.level != 0 {
+		panic("Tried to call previousLeaf on a non-leaf")
+	}
+	for a != t.root {
+		n = &t.nodes[a]
+		p := &t.nodes[n.parent]
+		switch a {
+		case p.left:
+			// We came up the left side. Keep going up until we can take a left
+			a = n.parent
+		case p.right:
+			idx, _ := t.rightmostLeaf(p.left, false) // ul is ignored here
+			return idx
+		}
+	}
+	// This tree doesn't have a previous leaf
+	return 0
+}
+
+func (t *Tree) nextLeaf(a uint) uint {
+	var n, p *node
+	n = &t.nodes[a]
+	if n.level != 0 {
+		panic("Tried to call nextLeaf on a non-leaf")
+	}
+	for a != t.root {
+		p = &t.nodes[n.parent]
+		switch a {
+		case p.right:
+			// We came up the right side. Keep going up until we can take a right
+			a = n.parent
+			n = &t.nodes[a]
+		case p.left:
+			idx, _ := t.leftmostLeaf(p.right, false) // ul is ignored here
+			return idx
+		}
+	}
+	// This tree doesn't have a previous leaf
+	return 0
+}
+
+func (t *Tree) leftEdge(key uint64) (uint, bool) {
+	var (
+		lidx uint
+		lul  bool
+		idx  uint = t.root
+		n    node = t.nodes[idx]
+		ul   bool = t.ul
+	)
+	for n.level != 0 && IsPrefixAt(key, n.prefix, n.level) {
+		switch {
+		case ZeroAt(key, n.level):
+			idx = n.left
+		default:
+			idx = n.right
+			lidx = n.left
+			lul = ul
+			ul = ul != t.nodes[n.left].ul
+		}
+		n = t.nodes[idx]
+	}
+	switch {
+	case idx == 0:
+		return 0, t.ul
+	case (n.level == 0 && n.boundAbove()), n.prefix > key:
+		return t.rightmostLeaf(lidx, lul)
+	default:
+		return t.rightmostLeaf(idx, ul)
+	}
+}
+
+func (t *Tree) rightEdge(key uint64) (uint, bool) {
+	var (
+		ridx uint
+		rul  bool
+		idx  uint = t.root
+		n    node = t.nodes[idx]
+		ul   bool = t.ul
+	)
+	for n.level != 0 && IsPrefixAt(key, n.prefix, n.level) {
+		switch {
+		case !ZeroAt(key, n.level):
+			idx = n.right
+			ul = ul != t.nodes[n.left].ul
+		default:
+			idx = n.left
+			ridx = n.right
+			rul = ul != t.nodes[n.left].ul
+		}
+		n = t.nodes[idx]
+	}
+	switch {
+	case idx == 0:
+		return 0, ul
+	case (n.level == 0 && n.boundBelow()), n.prefix < key:
+		return t.leftmostLeaf(ridx, rul)
+	default:
+		return t.leftmostLeaf(idx, ul)
+
+	}
 }

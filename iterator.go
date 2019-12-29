@@ -6,6 +6,7 @@ type IntervalIterator struct {
 	ulstack   []bool
 	ival      Interval
 	done      bool
+	holeleft  bool
 }
 
 func NewIntervalIterator(t Tree) *IntervalIterator {
@@ -31,6 +32,7 @@ func (it *IntervalIterator) Next() bool {
 		l         = len(it.nodestack)
 		n         uint
 		ul        bool
+		lul       bool = it.t.ul
 		cur       node
 		idx, left uint
 	)
@@ -53,35 +55,46 @@ func (it *IntervalIterator) Next() bool {
 			continue
 		}
 		// cur is a leaf
-		if cur.ul {
+		if it.holeleft || cur.ul {
 			// This node is part of a single interval
 			idx = it.ival.Tree.takeOwnership(&it.t, n)
 			if !ul {
+				if it.holeleft {
+					(&it.ival.nodes[idx]).incl = false
+					it.holeleft = false
+					ul = !ul
+				}
 				// Opening an interval
 				left = idx
+				lul = ul
 				continue
 			}
 			// Closing an interval
-			it.ival.mergeRoot(&it.ival.Tree, &it.ival.Tree, left, idx, false, cur.ul, and)
+			it.ival.mergeRoot(&it.ival.Tree, &it.ival.Tree, left, idx, lul, ul, and)
 		} else {
 			// This node is either a hole or a point
 			if !ul {
 				// Point
 				it.ival.root = it.ival.Tree.takeOwnership(&it.t, n)
+				// (&it.ival.nodes[it.ival.root]).incl = true // TODO: Make a test for point
 				return true
 			}
+			idx = it.ival.Tree.takeOwnership(&it.t, n)
 			// Hole
 			// Close what we've got
-			it.ival.mergeRoot(&it.ival.Tree, &it.ival.Tree, left, idx, false, cur.ul, and)
-			// Push this node back on the stack, updating it to open the next
-			// interval
-			cur.ul = true
+			it.ival.mergeRoot(&it.ival.Tree, &it.ival.Tree, left, idx, lul, ul, and)
+
+			// Push this node back on the stack, setting a flag so it will be
+			// treated only as the left side of an interval
+			it.holeleft = true
 			it.nodestack = append(it.nodestack, n)
 			it.ulstack = append(it.ulstack, false)
 		}
 		return true
 	}
-	it.ival.mergeRoot(&it.ival.Tree, &it.ival.Tree, left, 0, true, true, and)
+	if left > 0 {
+		it.ival.mergeRoot(&it.ival.Tree, &it.ival.Tree, left, 0, false, true, and)
+	}
 	if it.ival.IsEmpty() {
 		it.done = true
 		return false

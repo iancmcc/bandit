@@ -73,7 +73,10 @@ func (ival Interval) String() string {
 	}
 	n := ival.nodes[ival.root]
 	if n.level == 0 {
-		// Half-unbounded interval
+		// Half-unbounded interval or point
+		if n.boundBoth() {
+			return fmt.Sprintf("[%d]", n.prefix)
+		}
 		bs := boundmap[n.incl]
 		if ival.ul {
 			return fmt.Sprintf("(-∞, %d%c", n.prefix, bs[1])
