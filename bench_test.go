@@ -2,6 +2,7 @@ package bandit
 
 import (
 	"runtime"
+	"runtime/debug"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -9,9 +10,12 @@ import (
 	"github.com/zenoss/yamr/temporalset"
 )
 
-func measureMemoryUsageDuringOperation(body func()) float64 {
+func measureMemoryUsageDuringOperation(bm Benchmarker, prefix string, body func()) float64 {
 	var m1, m2 runtime.MemStats
-	runtime.GC()
+	bm.Time(prefix+"_gc", func() {
+		runtime.GC()
+		runtime.GC()
+	})
 	runtime.ReadMemStats(&m1)
 	body()
 	runtime.ReadMemStats(&m2)
@@ -20,8 +24,10 @@ func measureMemoryUsageDuringOperation(body func()) float64 {
 
 func createTestTrie(n, capacity, offset, stride int) *IntervalSet {
 	r := NewIntervalSetWithCapacity(uint(capacity), Above(0))
+	var s IntervalSet
 	for i := 0; i < n; i++ {
-		r = r.SymmetricDifference(r, NewIntervalSetWithCapacity(4, Above(uint64(i*stride+offset))))
+		s = Above(uint64(i*stride + offset)).AsIntervalSet()
+		r = r.SymmetricDifference(r, &s)
 	}
 	return r
 }
@@ -37,84 +43,95 @@ func createOldTestTrie(n, capacity, offset, stride int) *temporalset.IntervalSet
 var _ = Describe("Bench", func() {
 
 	var (
-		n int = 200
-		m int = 6000
+		n int = 30000
+		m int = 30000
+		t int = 5
 	)
+
+	// Disable GC so we get better measurements
+	debug.SetGCPercent(-1)
 
 	Measure("or", func(bm Benchmarker) {
 		var a, b *IntervalSet
-		alloc := measureMemoryUsageDuringOperation(func() {
-			creation := bm.Time("creation", func() {
-				a = createTestTrie(n, m, 0, 2)
-				b = createTestTrie(n, m, 1, 2)
+		bm.Time("total", func() {
+			alloc := measureMemoryUsageDuringOperation(bm, "creation", func() {
+				creation := bm.Time("creation", func() {
+					a = createTestTrie(n, m, 0, 2)
+					b = createTestTrie(n, m, 1, 2)
+				})
+				Ω(creation.Seconds()).Should(BeNumerically("<", 15))
 			})
-			Ω(creation.Seconds()).Should(BeNumerically("<", 15))
-		})
-		bm.RecordValue("creationAlloc", alloc)
-		alloc = measureMemoryUsageDuringOperation(func() {
-			runtime := bm.Time("runtime", func() {
-				a.Union(a, b)
+			bm.RecordValue("creationAlloc", alloc)
+			alloc = measureMemoryUsageDuringOperation(bm, "runtime", func() {
+				runtime := bm.Time("runtime", func() {
+					a.Union(a, b)
+				})
+				Ω(runtime.Seconds()).Should(BeNumerically("<", 2))
 			})
-			Ω(runtime.Seconds()).Should(BeNumerically("<", 2))
+			bm.RecordValue("execAlloc", alloc)
 		})
-		bm.RecordValue("execAlloc", alloc)
-	}, 1000)
+	}, t)
 
 	Measure("or - old", func(bm Benchmarker) {
 		var a, b *temporalset.IntervalSet
-		alloc := measureMemoryUsageDuringOperation(func() {
-			bm.Time("creation", func() {
-				a = createOldTestTrie(n, m, 0, 2)
-				b = createOldTestTrie(n, m, 1, 2)
+		bm.Time("total", func() {
+			alloc := measureMemoryUsageDuringOperation(bm, "creation", func() {
+				bm.Time("creation", func() {
+					a = createOldTestTrie(n, m, 0, 2)
+					b = createOldTestTrie(n, m, 1, 2)
+				})
 			})
-		})
-		bm.RecordValue("creationAlloc", alloc)
-		alloc = measureMemoryUsageDuringOperation(func() {
-			runtime := bm.Time("runtime", func() {
-				a.Union(b)
+			bm.RecordValue("creationAlloc", alloc)
+			alloc = measureMemoryUsageDuringOperation(bm, "runtime", func() {
+				runtime := bm.Time("runtime", func() {
+					a.Union(b)
+				})
+				Ω(runtime.Seconds()).Should(BeNumerically("<", 2))
 			})
-			Ω(runtime.Seconds()).Should(BeNumerically("<", 2))
+			bm.RecordValue("execAlloc", alloc)
 		})
-		bm.RecordValue("execAlloc", alloc)
-
-	}, 1000)
+	}, t)
 
 	Measure("and", func(bm Benchmarker) {
 		var a, b *IntervalSet
-		alloc := measureMemoryUsageDuringOperation(func() {
-			creation := bm.Time("creation", func() {
-				a = createTestTrie(n, m, 0, 2)
-				b = createTestTrie(n, m, 1, 2)
+		bm.Time("total", func() {
+			alloc := measureMemoryUsageDuringOperation(bm, "creation", func() {
+				creation := bm.Time("creation", func() {
+					a = createTestTrie(n, m, 0, 2)
+					b = createTestTrie(n, m, 1, 2)
+				})
+				Ω(creation.Seconds()).Should(BeNumerically("<", 15))
 			})
-			Ω(creation.Seconds()).Should(BeNumerically("<", 15))
-		})
-		bm.RecordValue("creationAlloc", alloc)
-		alloc = measureMemoryUsageDuringOperation(func() {
-			runtime := bm.Time("runtime", func() {
-				a.Intersection(a, b)
+			bm.RecordValue("creationAlloc", alloc)
+			alloc = measureMemoryUsageDuringOperation(bm, "runtime", func() {
+				runtime := bm.Time("runtime", func() {
+					a.Intersection(a, b)
+				})
+				Ω(runtime.Seconds()).Should(BeNumerically("<", 2))
 			})
-			Ω(runtime.Seconds()).Should(BeNumerically("<", 2))
+			bm.RecordValue("execAlloc", alloc)
 		})
-		bm.RecordValue("execAlloc", alloc)
 
-	}, 1000)
+	}, t)
 
 	Measure("and - old", func(bm Benchmarker) {
 		var a, b *temporalset.IntervalSet
-		alloc := measureMemoryUsageDuringOperation(func() {
-			bm.Time("creation", func() {
-				a = createOldTestTrie(n, m, 0, 2)
-				b = createOldTestTrie(n, m, 1, 2)
+		bm.Time("total", func() {
+			alloc := measureMemoryUsageDuringOperation(bm, "creation", func() {
+				bm.Time("creation", func() {
+					a = createOldTestTrie(n, m, 0, 2)
+					b = createOldTestTrie(n, m, 1, 2)
+				})
 			})
-		})
-		bm.RecordValue("creationAlloc", alloc)
-		alloc = measureMemoryUsageDuringOperation(func() {
-			runtime := bm.Time("runtime", func() {
-				a.Intersection(b)
+			bm.RecordValue("creationAlloc", alloc)
+			alloc = measureMemoryUsageDuringOperation(bm, "runtime", func() {
+				runtime := bm.Time("runtime", func() {
+					a.Intersection(b)
+				})
+				Ω(runtime.Seconds()).Should(BeNumerically("<", 2))
 			})
-			Ω(runtime.Seconds()).Should(BeNumerically("<", 2))
+			bm.RecordValue("execAlloc", alloc)
 		})
-		bm.RecordValue("execAlloc", alloc)
-	}, 1000)
+	}, t)
 
 })

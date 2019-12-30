@@ -5,44 +5,9 @@ import (
 	"strings"
 )
 
-type operation uint8
-
-const (
-	and operation = iota
-	or
-	xor
-	common
-)
-
-const (
-	LOGGING = false
-)
-
-var indent = ""
-
-func enter(s ...interface{}) func() {
-	if !LOGGING {
-		return func() {}
-	}
-	fmt.Println(indent, "->", s)
-	i := indent
-	indent += "  "
-	exit := func() {
-		fmt.Println(i, "<-", s)
-		indent = indent[:len(indent)-2]
-	}
-	return exit
-}
-
-func log(s ...interface{}) {
-	if !LOGGING {
-		return
-	}
-	fmt.Println(indent, "  ", s)
-}
-
 type (
-	node struct {
+	operation uint8
+	node      struct {
 		prefix uint64
 		level  uint
 		parent uint
@@ -58,6 +23,13 @@ type (
 		ul       bool
 		nodes    []node
 	}
+)
+
+const (
+	and operation = iota
+	or
+	xor
+	common
 )
 
 func treeEquals(at *Tree, bt *Tree, a, b uint) bool {
@@ -117,8 +89,6 @@ func (t *Tree) fix(idx uint) {
 	if n.level == 0 {
 		return
 	}
-	(&t.nodes[n.left]).parent = idx
-	(&t.nodes[n.right]).parent = idx
 }
 
 func (t *Tree) cp(n *node) (idx uint) {
@@ -131,7 +101,10 @@ func (t *Tree) cp(n *node) (idx uint) {
 		t.nodes = append(t.nodes, *n)
 		idx = uint(len(t.nodes) - 1)
 	}
-	t.fix(idx)
+	if n.level != 0 {
+		(&t.nodes[n.left]).parent = idx
+		(&t.nodes[n.right]).parent = idx
+	}
 	return
 }
 
@@ -460,12 +433,12 @@ func (t *Tree) previousLeaf(a uint) uint {
 		panic("Tried to call previousLeaf on a non-leaf")
 	}
 	for a != t.root {
-		n = &t.nodes[a]
 		p := &t.nodes[n.parent]
 		switch a {
 		case p.left:
 			// We came up the left side. Keep going up until we can take a left
 			a = n.parent
+			n = &t.nodes[a]
 		case p.right:
 			idx, _ := t.rightmostLeaf(p.left, false) // ul is ignored here
 			return idx

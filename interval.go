@@ -64,6 +64,12 @@ func NewInterval(lowerBound BoundType, lower, upper uint64, upperBound BoundType
 	return ival
 }
 
+func (ival Interval) AsIntervalSet() IntervalSet {
+	return IntervalSet{
+		Tree: ival.Tree,
+	}
+}
+
 func (ival Interval) String() string {
 	if ival.root == 0 {
 		if ival.ul {
@@ -122,6 +128,10 @@ func RightOpen(lower, upper uint64) Interval {
 
 func Closed(lower, upper uint64) Interval {
 	return NewInterval(ClosedBound, lower, upper, ClosedBound)
+}
+
+func Point(val uint64) Interval {
+	return Closed(val, val)
 }
 
 func Open(lower, upper uint64) Interval {

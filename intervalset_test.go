@@ -45,7 +45,7 @@ var _ = Describe("Set", func() {
 	It("should find enclosing intervals", func() {
 		a := NewIntervalSet(RightOpen(1, 10), RightOpen(20, 30), RightOpen(40, 50))
 		b := NewIntervalSet(RightOpen(4, 5), RightOpen(19, 25), RightOpen(42, 49))
-		c := NewIntervalSet().Enclosing(a, b)
+		c := NewIntervalSet().Enclosed(a, b)
 		Ω(c.Equals(NewIntervalSet(RightOpen(4, 5), RightOpen(42, 49)))).Should(BeTrue())
 	})
 
@@ -53,7 +53,7 @@ var _ = Describe("Set", func() {
 
 		Ω(NewIntervalSet().CommonIntervals(a, b).IsEmpty()).Should(BeTrue())
 
-		a.Add(
+		a.Add(a,
 			//AtOrBelow(2), // FIXME: Left unbounded common is broken
 			RightOpen(7, 9),
 			RightOpen(10, 13),
@@ -62,7 +62,7 @@ var _ = Describe("Set", func() {
 			LeftOpen(22, 27),
 			Above(30))
 
-		b.Add(
+		b.Add(b,
 			//AtOrBelow(2), // FIXME: Left unbounded common is broken
 			RightOpen(7, 9),
 			RightOpen(10, 12),
