@@ -1,6 +1,8 @@
 package bandit_test
 
 import (
+	"math/rand"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
@@ -143,4 +145,31 @@ var _ = Describe("IntervalMap", func() {
 		Entry("(a, b) = Ø", "(0, 0)", ">", "(100, 400)", "(0, 0)"),
 		Entry("(a, b) = Ø, (c, d) = Ø", "(0, 0)", ">", "(0, 0)", "(0, 0)"),
 	)
+
+	It("should pick a random value", func() {
+
+		m := NewIntervalMap()
+		m.Add(m, "a", RightOpen(10, 20))
+		m.Add(m, "b", RightOpen(10, 20), RightOpen(30, 40))
+		m.Add(m, "c", RightOpen(10, 20), RightOpen(30, 40), RightOpen(50, 60))
+
+		counts := map[interface{}]map[string]int{
+			"a": make(map[string]int),
+			"b": make(map[string]int),
+			"c": make(map[string]int),
+		}
+
+		rng := rand.New(rand.NewSource(GinkgoRandomSeed()))
+
+		for i := 0; i < 6000; i++ {
+			v, ival := m.RandValue(rng, 1)
+			counts[v][ival.String()] += 1
+		}
+		for _, m := range counts {
+			for _, c := range m {
+				Ω(c).Should(BeNumerically("~", 1000, 100))
+			}
+		}
+
+	})
 })

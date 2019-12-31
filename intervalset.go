@@ -1,6 +1,7 @@
 package bandit
 
 import (
+	"math/rand"
 	"strings"
 )
 
@@ -94,6 +95,52 @@ func (z *IntervalSet) CommonIntervals(x, y *IntervalSet) *IntervalSet {
 		z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, common)
 	}
 	return z
+}
+
+func (z *IntervalSet) Cardinality() int {
+	if z.root == 0 {
+		if z.ul {
+			return 1
+		}
+		return 0
+	}
+	i := (&z.nodes[z.root]).count / 2
+	if z.ul {
+		i += 1
+	}
+	return int(i)
+}
+
+func (z *IntervalSet) RandInterval(rng *rand.Rand) Interval {
+	if z.root == 0 {
+		if z.ul {
+			return Unbounded()
+		}
+		return Empty()
+	}
+	idx := z.root
+	n := &z.nodes[z.root]
+	ul := z.ul
+	for n.level != 0 {
+		left := &z.nodes[n.left]
+		if rng.Intn(int(n.count)) < int(left.count) {
+			idx = n.left
+			n = left
+		} else {
+			ul = ul != left.ul
+			idx = n.right
+			n = &z.nodes[idx]
+		}
+	}
+	ival := Empty()
+	var l, r uint
+	if ul {
+		l, r = z.previousLeaf(idx), idx
+	} else {
+		l, r = idx, z.nextLeaf(idx)
+	}
+	ival.mergeRoot(&z.Tree, &z.Tree, l, r, false, true, and)
+	return ival
 }
 
 func (z *IntervalSet) Enclosed(x, y *IntervalSet) *IntervalSet {

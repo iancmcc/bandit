@@ -13,6 +13,7 @@ type (
 		parent uint
 		left   uint
 		right  uint
+		count  uint
 		ul     bool
 		incl   bool
 	}
@@ -92,18 +93,23 @@ func (t *Tree) fix(idx uint) {
 }
 
 func (t *Tree) cp(n *node) (idx uint) {
+	nn := *n
+	if nn.level == 0 {
+		nn.count = 1
+	}
 	if t.numfree > 0 {
 		idx = t.nextfree
 		t.nextfree = (&t.nodes[idx]).left
-		t.nodes[idx] = *n
+		t.nodes[idx] = nn
 		t.numfree -= 1
 	} else {
-		t.nodes = append(t.nodes, *n)
+		t.nodes = append(t.nodes, nn)
 		idx = uint(len(t.nodes) - 1)
 	}
 	if n.level != 0 {
-		(&t.nodes[n.left]).parent = idx
-		(&t.nodes[n.right]).parent = idx
+		l, r := &t.nodes[n.left], &t.nodes[n.right]
+		l.parent, r.parent = idx, idx
+		(&t.nodes[idx]).count = l.count + r.count
 	}
 	return
 }

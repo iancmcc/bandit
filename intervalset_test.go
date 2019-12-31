@@ -2,6 +2,7 @@ package bandit_test
 
 import (
 	"fmt"
+	"math/rand"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -129,4 +130,38 @@ var _ = Describe("Set", func() {
 		}
 	})
 
+	It("should return the rough number of intervals", func() {
+		ivals := []Interval{
+			Empty(),
+			Below(2),
+			LeftOpen(2, 4),
+			Closed(5, 10),
+			Open(15, 17),
+			Above(17),
+		}
+		for i := 1; i < len(ivals); i++ {
+			a = NewIntervalSet(ivals[:i]...)
+			Ω(a.Cardinality()).Should(BeNumerically("==", i-1))
+		}
+	})
+
+	It("should return a random interval", func() {
+		rng := rand.New(rand.NewSource(GinkgoRandomSeed()))
+		ivals := []Interval{
+			RightOpen(2, 3),
+			RightOpen(5, 6),
+			Closed(7, 10),
+			Open(15, 17),
+			Closed(20, 25),
+			RightOpen(30, 100),
+		}
+		a = NewIntervalSet(ivals...)
+		counts := make(map[string]int, len(ivals))
+		for i := 0; i < 6000; i++ {
+			counts[a.RandInterval(rng).String()] += 1
+		}
+		for _, v := range counts {
+			Ω(v).Should(BeNumerically("~", 1000, 100))
+		}
+	})
 })

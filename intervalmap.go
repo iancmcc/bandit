@@ -1,5 +1,9 @@
 package bandit
 
+import (
+	"math/rand"
+)
+
 type (
 	setnode struct {
 		IntervalSet
@@ -299,6 +303,25 @@ func (z *IntervalMap) Difference(x *IntervalMap, y *IntervalMap) *IntervalMap {
 		}
 	}
 	return z
+}
+
+func (z *IntervalMap) RandValue(rng *rand.Rand, alpha float64) (interface{}, Interval) {
+	if rng.Float64() > alpha {
+		return nil, Empty()
+	}
+	var total int
+	for _, set := range z.sets {
+		total += set.Cardinality()
+	}
+	target := rng.Intn(total)
+	for k, setidx := range z.m {
+		set := &z.sets[setidx]
+		target -= set.Cardinality()
+		if target <= -1 {
+			return k, set.RandInterval(rng)
+		}
+	}
+	return nil, Empty()
 }
 
 func (z *IntervalMap) Enclosed(x *IntervalMap, y *IntervalMap) *IntervalMap {
