@@ -24,10 +24,9 @@ func measureMemoryUsageDuringOperation(bm Benchmarker, prefix string, body func(
 
 func createTestTrie(n, capacity, offset, stride int) *IntervalSet {
 	r := NewIntervalSetWithCapacity(uint(capacity), Above(0))
-	var s IntervalSet
 	for i := 0; i < n; i++ {
-		s = Above(uint64(i*stride + offset)).AsIntervalSet()
-		r = r.SymmetricDifference(r, &s)
+		s := Above(uint64(i*stride + offset)).AsIntervalSet()
+		r = r.SymmetricDifference(r, s)
 	}
 	return r
 }

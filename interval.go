@@ -64,8 +64,26 @@ func NewInterval(lowerBound BoundType, lower, upper uint64, upperBound BoundType
 	return ival
 }
 
-func (ival Interval) AsIntervalSet() IntervalSet {
-	return IntervalSet{
+func (ival Interval) Span() uint64 {
+	lidx, _ := ival.Tree.leftmostLeaf(ival.root, ival.ul)
+	ridx, _ := ival.Tree.rightmostLeaf(ival.root, ival.ul)
+	return (&ival.nodes[ridx]).prefix - (&ival.nodes[lidx]).prefix
+}
+
+func (ival Interval) Lower() uint64 {
+	idx, _ := ival.Tree.leftmostLeaf(ival.root, ival.ul)
+	return ival.nodes[idx].prefix
+}
+
+func (ival Interval) Upper() uint64 {
+	idx, _ := ival.Tree.rightmostLeaf(ival.root, ival.ul)
+	return ival.nodes[idx].prefix
+}
+
+func (ival Interval) AsIntervalSet() *IntervalSet {
+	copy(ival.array[:], ival.nodes)
+	ival.nodes = ival.array[:len(ival.nodes)]
+	return &IntervalSet{
 		Tree: ival.Tree,
 	}
 }

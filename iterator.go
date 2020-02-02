@@ -1,12 +1,39 @@
 package bandit
 
-type IntervalIterator struct {
-	t         Tree
-	nodestack []uint
-	ulstack   []bool
-	ival      Interval
-	done      bool
-	holeleft  bool
+type (
+	IntervalIterator struct {
+		t         Tree
+		nodestack []uint
+		ulstack   []bool
+		ival      Interval
+		done      bool
+		holeleft  bool
+	}
+	MapIterator struct {
+		m         *IntervalMap
+		this      interface{}
+		remaining []interface{}
+	}
+)
+
+func NewMapIterator(m *IntervalMap) *MapIterator {
+	remaining := make([]interface{}, 0, len(m.m))
+	for k := range m.m {
+		remaining = append(remaining, k)
+	}
+	return &MapIterator{m: m, remaining: remaining}
+}
+
+func (mi *MapIterator) Value() (interface{}, *IntervalSet) {
+	return mi.this, &mi.m.sets[mi.m.m[mi.this]].IntervalSet
+}
+
+func (mi *MapIterator) Next() bool {
+	if len(mi.remaining) == 0 {
+		return false
+	}
+	mi.this, mi.remaining = mi.remaining[0], mi.remaining[1:]
+	return true
 }
 
 func NewIntervalIterator(t Tree) *IntervalIterator {
@@ -36,7 +63,7 @@ func (it *IntervalIterator) Next() bool {
 		cur       node
 		idx, left uint
 	)
-	if l == 0 {
+	if l == 0 || it.nodestack[0] == 0 {
 		it.done = true
 		return false
 	}

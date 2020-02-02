@@ -1,7 +1,7 @@
 package bandit_test
 
 import (
-	"math/rand"
+	"golang.org/x/exp/rand"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -159,7 +159,7 @@ var _ = Describe("IntervalMap", func() {
 			"c": make(map[string]int),
 		}
 
-		rng := rand.New(rand.NewSource(GinkgoRandomSeed()))
+		rng := rand.New(rand.NewSource(uint64(GinkgoRandomSeed())))
 
 		for i := 0; i < 6000; i++ {
 			v, ival := m.RandValue(rng, 1)

@@ -1,8 +1,9 @@
 package bandit
 
 import (
-	"math/rand"
 	"strings"
+
+	"golang.org/x/exp/rand"
 )
 
 type (
@@ -13,7 +14,14 @@ type (
 
 const defaultIntervalSetCapacity = 8
 
+func NewSet(capacity int) *IntervalSet {
+	return NewIntervalSetWithCapacity(uint(capacity))
+}
+
 func NewIntervalSetWithCapacity(capacity uint, intervals ...Interval) *IntervalSet {
+	if capacity == 0 {
+		capacity = 1
+	}
 	set := newIntervalSetWithNodeStorage(make([]node, 1, capacity*4), intervals...)
 	return &set
 }
@@ -31,14 +39,23 @@ func newIntervalSetWithNodeStorage(storage []node, intervals ...Interval) Interv
 	return set
 }
 
+func (z *IntervalSet) Cap() int {
+	return cap(z.nodes)
+}
+
 func (z *IntervalSet) Iterator() *IntervalIterator {
 	return NewIntervalIterator(z.Tree)
 }
 
 func (z *IntervalSet) String() string {
-	s := []string{}
-	iterator := z.Iterator()
-	for iterator.Next() {
+	if z.root == 0 {
+		if z.ul {
+			return infinite
+		}
+		return empty
+	}
+	s := make([]string, 0, z.Cardinality())
+	for iterator := z.Iterator(); iterator.Next(); {
 		s = append(s, iterator.Interval().String())
 	}
 	return strings.Join(s, ", ")
@@ -92,6 +109,8 @@ func (z *IntervalSet) CommonIntervals(x, y *IntervalSet) *IntervalSet {
 		z.Clear()
 		fallthrough
 	default:
+		//x.Tree.PrintTree()
+		//y.Tree.PrintTree()
 		z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, common)
 	}
 	return z
@@ -105,7 +124,7 @@ func (z *IntervalSet) Cardinality() int {
 		return 0
 	}
 	i := (&z.nodes[z.root]).count / 2
-	if z.ul {
+	if z.ul || i == 0 {
 		i += 1
 	}
 	return int(i)
@@ -143,6 +162,39 @@ func (z *IntervalSet) RandInterval(rng *rand.Rand) Interval {
 	return ival
 }
 
+func (z *IntervalSet) FirstInterval() Interval {
+	if z.IsEmpty() {
+		return Empty()
+	}
+	if z.IsUnbounded() {
+		return Unbounded()
+	}
+	var ival Interval
+	l, ul := z.leftmostLeaf(z.root, z.ul)
+	if ul {
+		ival.Tree.mergeRoot(&z.Tree, &z.Tree, 0, l, true, z.ul, and)
+	} else {
+		ival.Tree.mergeRoot(&z.Tree, &z.Tree, l, z.nextLeaf(l), ul, !ul, and)
+	}
+	return ival
+}
+
+func (z *IntervalSet) Extent() Interval {
+	if z.IsEmpty() {
+		return Empty()
+	}
+	if z.IsUnbounded() {
+		return Unbounded()
+	}
+	ival := Empty()
+	//z.Check()
+	l, lul := z.leftmostLeaf(z.root, z.ul)
+	r, rul := z.rightmostLeaf(z.root, z.ul)
+	ival.Tree.mergeRoot(&z.Tree, &z.Tree, l, r, lul, rul, and)
+	//ival.Check()
+	return ival
+}
+
 func (z *IntervalSet) Enclosed(x, y *IntervalSet) *IntervalSet {
 	switch {
 	case x.ul == true, y.ul == true:
@@ -154,7 +206,9 @@ func (z *IntervalSet) Enclosed(x, y *IntervalSet) *IntervalSet {
 		fallthrough
 	default:
 		z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, and)
+		check(z, "ENCLOSED_POST_AND")
 		z.mergeRoot(&z.Tree, &y.Tree, z.root, y.root, z.ul, y.ul, common)
+		check(z, "ENCLOSED_POST_COMMON")
 	}
 	return z
 }
@@ -168,20 +222,26 @@ func (z *IntervalSet) Intersection(x, y *IntervalSet) *IntervalSet {
 		fallthrough
 	default:
 		z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, and)
+		//z.Check()
 	}
 	return z
 }
 
 func (z *IntervalSet) Union(x, y *IntervalSet) *IntervalSet {
 	switch {
-	case x == nil:
+	case x == nil || x.IsEmpty():
 		z.Copy(y)
-	case y == nil:
+	case y == nil || y.IsEmpty():
 		z.Copy(x)
 	case z != x && z != y:
 		z.Clear()
 		fallthrough
 	default:
+		/*
+			z.Check()
+			x.Check()
+			y.Check()
+		*/
 		z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, or)
 	}
 	return z

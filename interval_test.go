@@ -108,8 +108,8 @@ var _ = Describe("Interval", func() {
 		It("shouldn't mutate the original interval", func() {
 			last := Open(1, 10)
 			next := last.Intersection(AtOrAbove(2))
-			Ω(last).Should(Equal(Open(1, 10)))
-			Ω(next).Should(Equal(RightOpen(2, 10)))
+			Ω(last.Equals(Open(1, 10))).Should(BeTrue())
+			Ω(next.Equals(RightOpen(2, 10))).Should(BeTrue())
 		})
 
 		It("should return representative strings", func() {

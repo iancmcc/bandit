@@ -2,11 +2,11 @@ package bandit_test
 
 import (
 	"fmt"
-	"math/rand"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
+	"golang.org/x/exp/rand"
 
 	. "github.com/iancmcc/bandit"
 )
@@ -46,8 +46,28 @@ var _ = Describe("Set", func() {
 	It("should find enclosing intervals", func() {
 		a := NewIntervalSet(RightOpen(1, 10), RightOpen(20, 30), RightOpen(40, 50))
 		b := NewIntervalSet(RightOpen(4, 5), RightOpen(19, 25), RightOpen(42, 49))
-		c := NewIntervalSet().Enclosed(a, b)
-		Ω(c.Equals(NewIntervalSet(RightOpen(4, 5), RightOpen(42, 49)))).Should(BeTrue())
+		actual := NewIntervalSet().Enclosed(a, b)
+		expected := NewIntervalSet(RightOpen(4, 5), RightOpen(42, 49))
+
+		Ω(actual.Equals(expected)).Should(BeTrue(), "%s != %s", actual, expected)
+	})
+
+	It("should find extents", func() {
+		a := NewIntervalSet(RightOpen(1, 10), RightOpen(20, 30), RightOpen(40, 50))
+		Ω(a.Extent().Equals(RightOpen(1, 50))).Should(BeTrue())
+
+		a = NewIntervalSet(Below(50))
+		extent := a.Extent()
+		Ω(extent.Equals(Below(50))).Should(BeTrue(), "%s != %s", a.Extent(), Below(50))
+
+		a = NewIntervalSet(Above(50))
+		Ω(a.Extent().Equals(Above(50))).Should(BeTrue(), "%s != %s", a.Extent(), Above(50))
+
+		a = NewIntervalSet(Empty())
+		Ω(a.Extent().IsEmpty()).Should(BeTrue())
+
+		a = NewIntervalSet(Unbounded())
+		Ω(a.Extent().Equals(Unbounded())).Should(BeTrue())
 	})
 
 	It("should find common intervals", func() {
@@ -146,7 +166,7 @@ var _ = Describe("Set", func() {
 	})
 
 	It("should return a random interval", func() {
-		rng := rand.New(rand.NewSource(GinkgoRandomSeed()))
+		rng := rand.New(rand.NewSource(uint64(GinkgoRandomSeed())))
 		ivals := []Interval{
 			RightOpen(2, 3),
 			RightOpen(5, 6),
@@ -163,5 +183,32 @@ var _ = Describe("Set", func() {
 		for _, v := range counts {
 			Ω(v).Should(BeNumerically("~", 1000, 100))
 		}
+	})
+
+	It("should intersect with (0, inf) correctly", func() {
+		ivals := []Interval{
+			MustParseIntervalString("[1581228000, 1581400800)"),
+			MustParseIntervalString("[1581746400, 1582005600)"),
+			MustParseIntervalString("[1582351200, 1582610400)"),
+			MustParseIntervalString("[1582956000, 1583128800)"),
+		}
+		a = NewIntervalSet(ivals...)
+		b = Above(0).AsIntervalSet()
+
+		c := (&IntervalSet{}).Intersection(a, b)
+
+		/*
+			aold := temporalset.NewIntervalSet(
+				interval.RightOpen(1581228000, 1581400800),
+				interval.RightOpen(1581746400, 1582005600),
+				interval.RightOpen(1582351200, 1582610400),
+				interval.RightOpen(1582956000, 1583128800),
+			)
+			bold := temporalset.NewIntervalSet(interval.Above(0))
+
+			aold.Intersection(bold)
+		*/
+
+		Ω(c.Equals(a)).Should(BeTrue())
 	})
 })

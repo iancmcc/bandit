@@ -1,7 +1,10 @@
 package bandit
 
 import (
-	"math/rand"
+	"fmt"
+	"strings"
+
+	"golang.org/x/exp/rand"
 )
 
 type (
@@ -24,12 +27,36 @@ func NewIntervalMap() *IntervalMap {
 	return NewIntervalMapWithCapacity(defaultMapCapacity, defaultIntervalSetCapacity)
 }
 
-func NewIntervalMapWithCapacity(mapCapacity, nodeArraySize uint) *IntervalMap {
+func NewIntervalMapWithCapacity(mapCapacity, nodeArraySize int) *IntervalMap {
 	var m IntervalMap
 	m.m = make(map[interface{}]uint, mapCapacity)
-	m.ncap = nodeArraySize
+	m.ncap = uint(nodeArraySize)
 	m.sets = make([]setnode, 1, mapCapacity)
 	return &m
+}
+
+func CopyMap(x *IntervalMap) *IntervalMap {
+	return NewMap(x.Caps()).Copy(x)
+}
+
+func NewMap(mc, nc int) *IntervalMap {
+	return NewIntervalMapWithCapacity(mc, nc)
+}
+
+func (z *IntervalMap) String() string {
+	b := new(strings.Builder)
+	for k, iset := range z.m {
+		fmt.Fprintf(b, "%s: %s\n", k, &z.sets[iset].IntervalSet)
+	}
+	return b.String()
+}
+
+func (z *IntervalMap) Caps() (int, int) {
+	return cap(z.sets), int(z.ncap)
+}
+
+func (z *IntervalMap) IsEmpty() bool {
+	return len(z.m) == 0
 }
 
 func (z *IntervalMap) Equals(x *IntervalMap) bool {
@@ -54,6 +81,10 @@ func (z *IntervalMap) Equals(x *IntervalMap) bool {
 	return true
 }
 
+func CopySet(x *IntervalSet) *IntervalSet {
+	return NewSet(x.Cap()).Copy(x)
+}
+
 func (z *IntervalMap) allocset(x *IntervalSet, maxcap uint) (idx uint) {
 	if z.numfree > 0 {
 		idx = z.nextfree
@@ -67,6 +98,8 @@ func (z *IntervalMap) allocset(x *IntervalSet, maxcap uint) (idx uint) {
 				maxcap = z.ncap
 			}
 			x = NewIntervalSetWithCapacity(maxcap)
+		} else {
+			x = CopySet(x)
 		}
 		z.sets = append(z.sets, setnode{*x, 0})
 		idx = uint(len(z.sets) - 1)
@@ -98,12 +131,12 @@ func (z *IntervalMap) Copy(x *IntervalMap) *IntervalMap {
 		return x
 	}
 	z.Clear()
-	for k, v := range x.m {
-		z.m[k] = v
+	if x == nil {
+		return z
 	}
-	z.sets = append(z.sets[:1], x.sets[:1]...)
-	z.nextfree = x.nextfree
-	z.numfree = x.numfree
+	for k, v := range x.m {
+		z.m[k] = z.allocset(&x.sets[v].IntervalSet, 0)
+	}
 	return z
 }
 
@@ -125,6 +158,30 @@ func (z *IntervalMap) Add(x *IntervalMap, val interface{}, ival ...Interval) *In
 	}
 	set := &z.sets[idx].IntervalSet
 	set.Add(set, ival...)
+	if set.IsEmpty() {
+		z.remove(val)
+	}
+	return z
+}
+
+func (z *IntervalMap) AddSet(x *IntervalMap, val interface{}, iset *IntervalSet) *IntervalMap {
+	switch {
+	case x == nil:
+		z.Clear()
+	case z != x:
+		z.Copy(x)
+	}
+	if iset == nil || iset.IsEmpty() {
+		return z
+	}
+	idx, ok := z.m[val]
+	if !ok {
+		idx = z.allocset(iset, 0)
+		z.m[val] = idx
+		return z
+	}
+	set := &z.sets[idx].IntervalSet
+	set.Union(set, iset)
 	if set.IsEmpty() {
 		z.remove(val)
 	}
@@ -181,7 +238,7 @@ func (z *IntervalMap) Intersection(x *IntervalMap, y *IntervalMap) *IntervalMap 
 		zidx = z.allocset(nil, 0)
 		zset = &z.sets[zidx].IntervalSet
 		if zset.Intersection(aset, bset).IsEmpty() {
-			z.free(zidx)
+			z.remove(zidx)
 			continue
 		}
 		z.m[k] = zidx
@@ -266,6 +323,157 @@ func (z *IntervalMap) SymmetricDifference(x *IntervalMap, y *IntervalMap) *Inter
 	return z
 }
 
+func (z *IntervalMap) Check() {
+	// Check free list
+	// Check free list
+	if z.nextfree > 0 {
+		n := z.nextfree
+		c := z.numfree
+		for n > 0 {
+			nd := &z.sets[n]
+			n = nd.ptr
+			c -= 1
+		}
+		if c != 0 {
+			fmt.Println("ERROR: Free list was incorrect")
+		}
+	}
+
+	// Check sets
+	for k, idx := range z.m {
+		func(k interface{}, idx uint) {
+			defer func() {
+				if e := recover(); e != nil {
+					fmt.Println("OFFENDING KEY: ", k)
+					panic(e)
+				}
+			}()
+			set := &z.sets[idx].IntervalSet
+			if set.IsEmpty() {
+				panic("INTERVALSET IS EMPTY")
+			}
+			(&z.sets[idx].IntervalSet).Check()
+		}(k, idx)
+	}
+}
+
+func (z *IntervalMap) AllIntervals() *IntervalSet {
+	s := NewIntervalSetWithCapacity(z.ncap)
+	for k, sidx := range z.m {
+		set := &z.sets[sidx].IntervalSet
+		check(set, fmt.Sprintf("SET %s", k))
+		s.Union(s, set)
+		check(s, fmt.Sprintf("S POST UNION WITH %s", k))
+	}
+	check(s, "S ALL INTERVALS")
+	return s
+}
+
+func (z *IntervalMap) MutateValues(x *IntervalMap, f func(interface{}) interface{}) *IntervalMap {
+	z.Copy(x)
+	seen := make(map[interface{}]struct{})
+	for k, idx := range z.m {
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		nv := f(k)
+		if nv == nil {
+			// We won't include this key
+			z.remove(k)
+			continue
+		}
+		if existing, ok := z.m[nv]; ok {
+			// Merge existing
+			x1 := &z.sets[existing].IntervalSet
+			x1.Union(x1, &z.sets[idx].IntervalSet)
+			if k != nv {
+				z.remove(k)
+			}
+			continue
+		}
+		if nv != k {
+			z.m[nv] = idx
+			seen[nv] = struct{}{}
+			delete(z.m, k)
+		}
+	}
+	return z
+}
+
+func (z *IntervalMap) Mask(x *IntervalMap, mask *IntervalSet) *IntervalMap {
+	if z != x {
+		z.Clear()
+	}
+	for k, idx := range x.m {
+		s := &x.sets[idx].IntervalSet
+		if z == x {
+			s.Intersection(s, mask)
+			continue
+		}
+		didx := z.allocset(nil, 0)
+		if (&z.sets[didx].IntervalSet).Intersection(s, mask).IsEmpty() {
+			z.free(didx)
+			continue
+		}
+		z.m[k] = didx
+	}
+	return z
+}
+
+func (z *IntervalMap) MaskEnclosed(x *IntervalMap, mask *IntervalSet) *IntervalMap {
+	if z != x {
+		z.Clear()
+	}
+	for k, idx := range x.m {
+		s := &x.sets[idx].IntervalSet
+		if z == x {
+			if s.Enclosed(mask, s).IsEmpty() {
+				z.remove(k)
+			}
+			continue
+		}
+		didx := z.allocset(nil, 0)
+		if (&z.sets[didx].IntervalSet).Enclosed(mask, s).IsEmpty() {
+			z.free(didx)
+			continue
+		}
+		z.m[k] = didx
+	}
+	return z
+}
+
+func (z *IntervalMap) SubtractInterval(x *IntervalMap, value interface{}, ival Interval) *IntervalMap {
+	if z != x {
+		z.Copy(x)
+	}
+	idx, ok := z.m[value]
+	if !ok {
+		return z
+	}
+	set := &z.sets[idx].IntervalSet
+	if set.Difference(set, ival.AsIntervalSet()).IsEmpty() {
+		z.remove(value)
+	}
+	return z
+}
+
+func (z *IntervalMap) PopMask(x *IntervalMap, set *IntervalSet) (*IntervalMap, *IntervalMap) {
+	popped := NewMap(x.Caps()).Mask(x, set)
+	if z != x {
+		z.Clear()
+	}
+	z.Difference(x, popped)
+	return z, popped
+}
+
+func (z *IntervalMap) ValueSlice() []interface{} {
+	s := make([]interface{}, 0, len(z.m)+1)
+	for k := range z.m {
+		s = append(s, k)
+	}
+	return s
+}
+
 func (z *IntervalMap) Difference(x *IntervalMap, y *IntervalMap) *IntervalMap {
 	switch {
 	case y == nil:
@@ -289,6 +497,7 @@ func (z *IntervalMap) Difference(x *IntervalMap, y *IntervalMap) *IntervalMap {
 			}
 		}
 	case z == y:
+		fmt.Println("2")
 		for k, xidx := range x.m {
 			xset := &x.sets[xidx].IntervalSet
 			zidx, ok := z.m[k]
@@ -305,13 +514,39 @@ func (z *IntervalMap) Difference(x *IntervalMap, y *IntervalMap) *IntervalMap {
 	return z
 }
 
+func (z *IntervalMap) Iterator() *MapIterator {
+	return NewMapIterator(z)
+}
+
+func (z *IntervalMap) PopRandValue(x *IntervalMap, rng *rand.Rand, alpha float64) (*IntervalMap, interface{}, Interval) {
+	z.Copy(x)
+	k, ival := z.RandValue(rng, alpha)
+	if !ival.IsEmpty() {
+		s := &z.sets[z.m[k]].IntervalSet
+		if s.Difference(s, ival.AsIntervalSet()).IsEmpty() {
+			z.remove(k)
+		}
+	}
+	return z, k, ival
+}
+
 func (z *IntervalMap) RandValue(rng *rand.Rand, alpha float64) (interface{}, Interval) {
 	if rng.Float64() > alpha {
 		return nil, Empty()
 	}
 	var total int
 	for _, set := range z.sets {
+		if set.IsEmpty() {
+			continue
+		}
+		if set.Cardinality() == 0 {
+			total += 1
+			continue
+		}
 		total += set.Cardinality()
+	}
+	if total == 0 {
+		return nil, Empty()
 	}
 	target := rng.Intn(total)
 	for k, setidx := range z.m {
