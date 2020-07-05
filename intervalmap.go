@@ -3,8 +3,6 @@ package bandit
 import (
 	"fmt"
 	"strings"
-
-	"golang.org/x/exp/rand"
 )
 
 type (
@@ -420,28 +418,6 @@ func (z *IntervalMap) Mask(x *IntervalMap, mask *IntervalSet) *IntervalMap {
 	return z
 }
 
-func (z *IntervalMap) MaskEnclosed(x *IntervalMap, mask *IntervalSet) *IntervalMap {
-	if z != x {
-		z.Clear()
-	}
-	for k, idx := range x.m {
-		s := &x.sets[idx].IntervalSet
-		if z == x {
-			if s.Enclosed(mask, s).IsEmpty() {
-				z.remove(k)
-			}
-			continue
-		}
-		didx := z.allocset(nil, 0)
-		if (&z.sets[didx].IntervalSet).Enclosed(mask, s).IsEmpty() {
-			z.free(didx)
-			continue
-		}
-		z.m[k] = didx
-	}
-	return z
-}
-
 func (z *IntervalMap) SubtractInterval(x *IntervalMap, value interface{}, ival Interval) *IntervalMap {
 	if z != x {
 		z.Copy(x)
@@ -516,87 +492,6 @@ func (z *IntervalMap) Difference(x *IntervalMap, y *IntervalMap) *IntervalMap {
 
 func (z *IntervalMap) Iterator() *MapIterator {
 	return NewMapIterator(z)
-}
-
-func (z *IntervalMap) PopRandValue(x *IntervalMap, rng *rand.Rand, alpha float64) (*IntervalMap, interface{}, Interval) {
-	z.Copy(x)
-	k, ival := z.RandValue(rng, alpha)
-	if !ival.IsEmpty() {
-		s := &z.sets[z.m[k]].IntervalSet
-		if s.Difference(s, ival.AsIntervalSet()).IsEmpty() {
-			z.remove(k)
-		}
-	}
-	return z, k, ival
-}
-
-func (z *IntervalMap) RandValue(rng *rand.Rand, alpha float64) (interface{}, Interval) {
-	if rng.Float64() > alpha {
-		return nil, Empty()
-	}
-	var total int
-	for _, set := range z.sets {
-		if set.IsEmpty() {
-			continue
-		}
-		if set.Cardinality() == 0 {
-			total += 1
-			continue
-		}
-		total += set.Cardinality()
-	}
-	if total == 0 {
-		return nil, Empty()
-	}
-	target := rng.Intn(total)
-	for k, setidx := range z.m {
-		set := &z.sets[setidx]
-		target -= set.Cardinality()
-		if target <= -1 {
-			return k, set.RandInterval(rng)
-		}
-	}
-	return nil, Empty()
-}
-
-func (z *IntervalMap) Enclosed(x *IntervalMap, y *IntervalMap) *IntervalMap {
-	switch {
-	case x == y:
-		z.Copy(x)
-	case x == nil, y == nil:
-		z.Clear()
-	case z != x && z != y:
-		z.Copy(x)
-		x = z
-		fallthrough
-	case z == x:
-		for k, zidx := range z.m {
-			yidx, ok := y.m[k]
-			if !ok {
-				z.remove(k)
-				continue
-			}
-			zset := &z.sets[zidx].IntervalSet
-			yset := &y.sets[yidx].IntervalSet
-			if zset.Enclosed(zset, yset).IsEmpty() {
-				z.remove(k)
-			}
-		}
-	case z == y:
-		for k, xidx := range x.m {
-			xset := &x.sets[xidx].IntervalSet
-			zidx, ok := z.m[k]
-			if !ok {
-				z.m[k] = z.allocset(xset, 0)
-				continue
-			}
-			zset := &z.sets[zidx].IntervalSet
-			if zset.Enclosed(xset, zset).IsEmpty() {
-				z.remove(k)
-			}
-		}
-	}
-	return z
 }
 
 func (z *IntervalMap) Get(value interface{}) *IntervalSet {

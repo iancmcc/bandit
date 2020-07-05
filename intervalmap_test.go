@@ -1,8 +1,6 @@
 package bandit_test
 
 import (
-	"golang.org/x/exp/rand"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
@@ -20,8 +18,6 @@ func doIntervalMapOp(op string, a, b *IntervalMap) *IntervalMap {
 		return a.SymmetricDifference(a, b)
 	case "-":
 		return a.Difference(a, b)
-	case ">":
-		return a.Enclosed(a, b)
 	}
 	return a
 }
@@ -73,9 +69,9 @@ var _ = Describe("IntervalMap", func() {
 		left = imap("", MustParseIntervalString(astr))
 		right = imap("", MustParseIntervalString(bstr))
 
-		// Everything except Difference and Enclosed is a commutative
+		// Everything except Difference is a commutative
 		// operation, so test the other direction
-		if operator != "-" && operator != ">" {
+		if operator != "-" {
 			inverse := doIntervalMapOp(operator, right, left)
 			Ω(inverse.Equals(expected)).Should(BeTrue())
 		}
@@ -120,7 +116,7 @@ var _ = Describe("IntervalMap", func() {
 		Entry("(a, b) = Ø, (c, d) = Ø", "(1, 0)", "^", "(1, 0)", "(0, 0)"),
 	)
 
-	DescribeTable("(a, b) &^ (c, d)", operatorTest,
+	DescribeTable("(a, b) - (c, d)", operatorTest,
 		Entry("a < b < c < d", "(100, 200)", "-", "(300, 400)", "(100, 200)"),
 		Entry("a < b = c < d", "(100, 200)", "-", "(200, 300)", "(100, 200)"),
 		Entry("a < c < b < d", "(100, 300)", "-", "(200, 400)", "(100, 200]"),
@@ -133,43 +129,4 @@ var _ = Describe("IntervalMap", func() {
 		Entry("(a, b) = Ø, (c, d) = Ø", "(1, 0)", "-", "(1, 0)", "(0, 0)"),
 	)
 
-	DescribeTable("(a, b) > (c, d)", operatorTest,
-		Entry("a < b < c < d", "(100, 200)", ">", "(300, 400)", "(0, 0)"),
-		Entry("a < b = c < d", "(100, 200)", ">", "(200, 300)", "(0, 0)"),
-		Entry("a < c < b < d", "(100, 300)", ">", "(200, 400)", "(0, 0)"),
-		Entry("a < c < d < b", "(100, 400)", ">", "(200, 300)", "(200, 300)"),
-		Entry("a = c < b = d", "(100, 200)", ">", "(100, 200)", "(100, 200)"),
-		Entry("a = c < d < b", "(100, 400)", ">", "(100, 300)", "(100, 300)"),
-		Entry("a < c < b = d", "(100, 400)", ">", "(300, 400)", "(300, 400)"),
-		Entry("(c, d) = Ø", "(100, 400)", ">", "(0, 0)", "(0, 0)"),
-		Entry("(a, b) = Ø", "(0, 0)", ">", "(100, 400)", "(0, 0)"),
-		Entry("(a, b) = Ø, (c, d) = Ø", "(0, 0)", ">", "(0, 0)", "(0, 0)"),
-	)
-
-	It("should pick a random value", func() {
-
-		m := NewIntervalMap()
-		m.Add(m, "a", RightOpen(10, 20))
-		m.Add(m, "b", RightOpen(10, 20), RightOpen(30, 40))
-		m.Add(m, "c", RightOpen(10, 20), RightOpen(30, 40), RightOpen(50, 60))
-
-		counts := map[interface{}]map[string]int{
-			"a": make(map[string]int),
-			"b": make(map[string]int),
-			"c": make(map[string]int),
-		}
-
-		rng := rand.New(rand.NewSource(uint64(GinkgoRandomSeed())))
-
-		for i := 0; i < 6000; i++ {
-			v, ival := m.RandValue(rng, 1)
-			counts[v][ival.String()] += 1
-		}
-		for _, m := range counts {
-			for _, c := range m {
-				Ω(c).Should(BeNumerically("~", 1000, 100))
-			}
-		}
-
-	})
 })

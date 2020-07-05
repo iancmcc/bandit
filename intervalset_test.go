@@ -6,7 +6,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
-	"golang.org/x/exp/rand"
 
 	. "github.com/iancmcc/bandit"
 )
@@ -43,15 +42,6 @@ var _ = Describe("Set", func() {
 		Entry("a ^ b", "^", `[0, 1), [2, 4), [5, 6)`),
 	)
 
-	It("should find enclosing intervals", func() {
-		a := NewIntervalSet(RightOpen(1, 10), RightOpen(20, 30), RightOpen(40, 50))
-		b := NewIntervalSet(RightOpen(4, 5), RightOpen(19, 25), RightOpen(42, 49))
-		actual := NewIntervalSet().Enclosed(a, b)
-		expected := NewIntervalSet(RightOpen(4, 5), RightOpen(42, 49))
-
-		Ω(actual.Equals(expected)).Should(BeTrue(), "%s != %s", actual, expected)
-	})
-
 	It("should find extents", func() {
 		a := NewIntervalSet(RightOpen(1, 10), RightOpen(20, 30), RightOpen(40, 50))
 		Ω(a.Extent().Equals(RightOpen(1, 50))).Should(BeTrue())
@@ -68,34 +58,6 @@ var _ = Describe("Set", func() {
 
 		a = NewIntervalSet(Unbounded())
 		Ω(a.Extent().Equals(Unbounded())).Should(BeTrue())
-	})
-
-	It("should find common intervals", func() {
-
-		Ω(NewIntervalSet().CommonIntervals(a, b).IsEmpty()).Should(BeTrue())
-
-		a.Add(a,
-			//AtOrBelow(2), // FIXME: Left unbounded common is broken
-			RightOpen(7, 9),
-			RightOpen(10, 13),
-			Closed(14, 14),
-			Closed(15, 20),
-			LeftOpen(22, 27),
-			Above(30))
-
-		b.Add(b,
-			//AtOrBelow(2), // FIXME: Left unbounded common is broken
-			RightOpen(7, 9),
-			RightOpen(10, 12),
-			Closed(14, 14),
-			Closed(15, 20),
-			LeftOpen(23, 27),
-			Above(30))
-
-		actual := b.CommonIntervals(a, b)
-		expected := NewIntervalSet(RightOpen(7, 9), Closed(14, 14), Closed(15, 20), Above(30))
-
-		Ω(actual.Equals(expected)).Should(BeTrue(), "%s != %s", actual, expected)
 	})
 
 	It("should report equality correctly", func() {
@@ -162,26 +124,6 @@ var _ = Describe("Set", func() {
 		for i := 1; i < len(ivals); i++ {
 			a = NewIntervalSet(ivals[:i]...)
 			Ω(a.Cardinality()).Should(BeNumerically("==", i-1))
-		}
-	})
-
-	It("should return a random interval", func() {
-		rng := rand.New(rand.NewSource(uint64(GinkgoRandomSeed())))
-		ivals := []Interval{
-			RightOpen(2, 3),
-			RightOpen(5, 6),
-			Closed(7, 10),
-			Open(15, 17),
-			Closed(20, 25),
-			RightOpen(30, 100),
-		}
-		a = NewIntervalSet(ivals...)
-		counts := make(map[string]int, len(ivals))
-		for i := 0; i < 6000; i++ {
-			counts[a.RandInterval(rng).String()] += 1
-		}
-		for _, v := range counts {
-			Ω(v).Should(BeNumerically("~", 1000, 100))
 		}
 	})
 

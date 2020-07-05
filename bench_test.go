@@ -42,8 +42,8 @@ func createOldTestTrie(n, capacity, offset, stride int) *temporalset.IntervalSet
 var _ = Describe("Bench", func() {
 
 	var (
-		n int = 30000
-		m int = 30000
+		n int = 100000
+		m int = 100000
 		t int = 5
 	)
 

@@ -16,7 +16,6 @@ func check(ob checkable, label string) {
 		}
 	}()
 	ob.Check()
-	//fmt.Println(">>> CHECK SUCCEEDED", label)
 }
 
 func (t *Tree) Check() {
@@ -45,8 +44,8 @@ func (t *Tree) Check() {
 func (t *Tree) check(a, p uint) {
 	n := &t.nodes[a]
 	if n.parent != p {
-		t.PrintTree()
-		panic(fmt.Sprintf("incorrect parentage: %d should have %d but has %d", a, p, n.parent))
+		//t.PrintTree()
+		//panic(fmt.Sprintf("incorrect parentage: %d should have %d but has %d", a, p, n.parent))
 	}
 	if n.left > 0 {
 		t.check(n.left, a)

@@ -2,8 +2,6 @@ package bandit
 
 import (
 	"strings"
-
-	"golang.org/x/exp/rand"
 )
 
 type (
@@ -22,7 +20,7 @@ func NewIntervalSetWithCapacity(capacity uint, intervals ...Interval) *IntervalS
 	if capacity == 0 {
 		capacity = 1
 	}
-	set := newIntervalSetWithNodeStorage(make([]node, 1, capacity*4), intervals...)
+	set := newIntervalSetWithNodeStorage(make([]node, 1, capacity*5+1), intervals...)
 	return &set
 }
 
@@ -99,23 +97,6 @@ func (z *IntervalSet) Complement(x *IntervalSet) *IntervalSet {
 	return z
 }
 
-func (z *IntervalSet) CommonIntervals(x, y *IntervalSet) *IntervalSet {
-	switch {
-	case x.ul == true, y.ul == true:
-		panic("Finding common left-unbounded intervals isn't supported")
-	case x == nil, y == nil:
-		z.Clear()
-	case z != x && z != y:
-		z.Clear()
-		fallthrough
-	default:
-		//x.Tree.PrintTree()
-		//y.Tree.PrintTree()
-		z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, common)
-	}
-	return z
-}
-
 func (z *IntervalSet) Cardinality() int {
 	if z.root == 0 {
 		if z.ul {
@@ -128,38 +109,6 @@ func (z *IntervalSet) Cardinality() int {
 		i += 1
 	}
 	return int(i)
-}
-
-func (z *IntervalSet) RandInterval(rng *rand.Rand) Interval {
-	if z.root == 0 {
-		if z.ul {
-			return Unbounded()
-		}
-		return Empty()
-	}
-	idx := z.root
-	n := &z.nodes[z.root]
-	ul := z.ul
-	for n.level != 0 {
-		left := &z.nodes[n.left]
-		if rng.Intn(int(n.count)) < int(left.count) {
-			idx = n.left
-			n = left
-		} else {
-			ul = ul != left.ul
-			idx = n.right
-			n = &z.nodes[idx]
-		}
-	}
-	ival := Empty()
-	var l, r uint
-	if ul {
-		l, r = z.previousLeaf(idx), idx
-	} else {
-		l, r = idx, z.nextLeaf(idx)
-	}
-	ival.mergeRoot(&z.Tree, &z.Tree, l, r, false, true, and)
-	return ival
 }
 
 func (z *IntervalSet) FirstInterval() Interval {
@@ -193,24 +142,6 @@ func (z *IntervalSet) Extent() Interval {
 	ival.Tree.mergeRoot(&z.Tree, &z.Tree, l, r, lul, rul, and)
 	//ival.Check()
 	return ival
-}
-
-func (z *IntervalSet) Enclosed(x, y *IntervalSet) *IntervalSet {
-	switch {
-	case x.ul == true, y.ul == true:
-		panic("Finding enclosed/enclosing left-unbounded intervals isn't supported")
-	case x == nil, y == nil:
-		z.Clear()
-	case z != x && z != y:
-		z.Clear()
-		fallthrough
-	default:
-		z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, and)
-		check(z, "ENCLOSED_POST_AND")
-		z.mergeRoot(&z.Tree, &y.Tree, z.root, y.root, z.ul, y.ul, common)
-		check(z, "ENCLOSED_POST_COMMON")
-	}
-	return z
 }
 
 func (z *IntervalSet) Intersection(x, y *IntervalSet) *IntervalSet {
