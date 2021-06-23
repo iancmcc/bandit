@@ -6,8 +6,6 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/zenoss/yamr/interval"
-	"github.com/zenoss/yamr/temporalset"
 )
 
 func measureMemoryUsageDuringOperation(bm Benchmarker, prefix string, body func()) float64 {
@@ -27,14 +25,6 @@ func createTestTrie(n, capacity, offset, stride int) *IntervalSet {
 	for i := 0; i < n; i++ {
 		s := Above(uint64(i*stride + offset)).AsIntervalSet()
 		r = r.SymmetricDifference(r, s)
-	}
-	return r
-}
-
-func createOldTestTrie(n, capacity, offset, stride int) *temporalset.IntervalSet {
-	r := temporalset.NewIntervalSet(interval.Above(0))
-	for i := 0; i < n; i++ {
-		r = r.SymmetricDifference(temporalset.NewIntervalSet(interval.Above(uint64(i*stride + offset))))
 	}
 	return r
 }
@@ -71,26 +61,6 @@ var _ = Describe("Bench", func() {
 		})
 	}, t)
 
-	Measure("or - old", func(bm Benchmarker) {
-		var a, b *temporalset.IntervalSet
-		bm.Time("total", func() {
-			alloc := measureMemoryUsageDuringOperation(bm, "creation", func() {
-				bm.Time("creation", func() {
-					a = createOldTestTrie(n, m, 0, 2)
-					b = createOldTestTrie(n, m, 1, 2)
-				})
-			})
-			bm.RecordValue("creationAlloc", alloc)
-			alloc = measureMemoryUsageDuringOperation(bm, "runtime", func() {
-				runtime := bm.Time("runtime", func() {
-					a.Union(b)
-				})
-				Ω(runtime.Seconds()).Should(BeNumerically("<", 2))
-			})
-			bm.RecordValue("execAlloc", alloc)
-		})
-	}, t)
-
 	Measure("and", func(bm Benchmarker) {
 		var a, b *IntervalSet
 		bm.Time("total", func() {
@@ -111,26 +81,6 @@ var _ = Describe("Bench", func() {
 			bm.RecordValue("execAlloc", alloc)
 		})
 
-	}, t)
-
-	Measure("and - old", func(bm Benchmarker) {
-		var a, b *temporalset.IntervalSet
-		bm.Time("total", func() {
-			alloc := measureMemoryUsageDuringOperation(bm, "creation", func() {
-				bm.Time("creation", func() {
-					a = createOldTestTrie(n, m, 0, 2)
-					b = createOldTestTrie(n, m, 1, 2)
-				})
-			})
-			bm.RecordValue("creationAlloc", alloc)
-			alloc = measureMemoryUsageDuringOperation(bm, "runtime", func() {
-				runtime := bm.Time("runtime", func() {
-					a.Intersection(b)
-				})
-				Ω(runtime.Seconds()).Should(BeNumerically("<", 2))
-			})
-			bm.RecordValue("execAlloc", alloc)
-		})
 	}, t)
 
 })
