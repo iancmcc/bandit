@@ -1,5 +1,5 @@
 # bandit
 High-Performance Interval Sets in Go
 
-[![pkg.go.dev](https://pkg.go.dev/github.com/iancmcc/bandit?status.svg)](https://pkg.go.dev/github.com/iancmcc/bandit)
+[![Go Reference](https://pkg.go.dev/badge/github.com/iancmcc/bandit.svg)](https://pkg.go.dev/github.com/iancmcc/bandit)
 
