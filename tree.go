@@ -1,9 +1,13 @@
 package bandit
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
+	"io"
 	"strings"
 
+	"github.com/golang/snappy"
 	"github.com/xlab/treeprint"
 )
 
@@ -319,8 +323,7 @@ func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) (idx 
 		a_left, a_right, a_prefix, a_level := an.left, an.right, an.prefix, an.level
 		var tofree uint
 		if a != b || at != bt {
-			//log("TOFREE IS A", a)
-			//tofree = a
+			tofree = a
 		}
 		if ZeroAt(bn.prefix, a_level) {
 			rul := bul != bn.ul
@@ -357,7 +360,7 @@ func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) (idx 
 		b_left, b_right, b_prefix, b_level := bn.left, bn.right, bn.prefix, bn.level
 		var tofree uint
 		if a != b || at != bt {
-			//tofree = b
+			tofree = b
 		}
 		if ZeroAt(an.prefix, b_level) {
 			// a is under the left side of b
@@ -396,15 +399,8 @@ func (t *Tree) merge(at, bt *Tree, a, b uint, aul, bul bool, op operation) (idx 
 		// Two internal nodes with same prefix; merge left with left, right with right
 		lul := aul != (&at.nodes[a_left]).ul
 		rul := bul != (&bt.nodes[b_left]).ul
-		//check(t, "T_PRE_LEFT")
-		//fmt.Println("AT", a_left, aul)
-		//at.PrintTree()
-		//fmt.Println("BT", b_left, bul)
-		//bt.PrintTree()
 		left := t.merge(at, bt, a_left, b_left, aul, bul, op)
-		//check(t, "T_POST_LEFT")
 		right := t.merge(at, bt, a_right, b_right, lul, rul, op)
-		//check(t, "T_POST_RIGHT")
 		// Merge takes ownership, so need to try again here
 		if left == 0 {
 			idx = right
@@ -617,4 +613,148 @@ func (t *Tree) rightEdge(key uint64) (uint, bool) {
 		return t.leftmostLeaf(idx, ul)
 
 	}
+}
+
+func (n *node) GobEncode() ([]byte, error) {
+	w := new(bytes.Buffer)
+	enc := gob.NewEncoder(w)
+	err := enc.Encode(n.prefix)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(n.level)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(n.parent)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(n.left)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(n.right)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(n.count)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(n.ul)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(n.incl)
+	if err != nil {
+		return nil, err
+	}
+	return w.Bytes(), nil
+}
+
+func (n *node) GobDecode(buf []byte) error {
+	w := bytes.NewBuffer(buf)
+	enc := gob.NewDecoder(w)
+	err := enc.Decode(&n.prefix)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&n.level)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&n.parent)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&n.left)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&n.right)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&n.count)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&n.ul)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&n.incl)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *Tree) GobEncode() ([]byte, error) {
+	w := new(bytes.Buffer)
+	enc := gob.NewEncoder(w)
+	err := enc.Encode(t.root)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(t.nextfree)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(t.numfree)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(t.ul)
+	if err != nil {
+		return nil, err
+	}
+	err = enc.Encode(t.nodes)
+	if err != nil {
+		return nil, err
+	}
+	return w.Bytes(), nil
+}
+
+func (t *Tree) GobDecode(buf []byte) error {
+	r := bytes.NewBuffer(buf)
+	enc := gob.NewDecoder(r)
+	err := enc.Decode(&t.root)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&t.nextfree)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&t.numfree)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&t.ul)
+	if err != nil {
+		return err
+	}
+	err = enc.Decode(&t.nodes)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *Tree) Dump(w io.Writer) error {
+	bw := snappy.NewBufferedWriter(w)
+	defer bw.Close()
+	enc := gob.NewEncoder(bw)
+	return enc.Encode(t)
+}
+
+func LoadTree(r io.Reader) (*Tree, error) {
+	var t Tree
+	enc := gob.NewDecoder(snappy.NewReader(r))
+	if err := enc.Decode(&t); err != nil {
+		return nil, err
+	}
+	return &t, nil
 }

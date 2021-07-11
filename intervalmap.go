@@ -321,49 +321,12 @@ func (z *IntervalMap) SymmetricDifference(x *IntervalMap, y *IntervalMap) *Inter
 	return z
 }
 
-func (z *IntervalMap) Check() {
-	// Check free list
-	// Check free list
-	if z.nextfree > 0 {
-		n := z.nextfree
-		c := z.numfree
-		for n > 0 {
-			nd := &z.sets[n]
-			n = nd.ptr
-			c -= 1
-		}
-		if c != 0 {
-			fmt.Println("ERROR: Free list was incorrect")
-		}
-	}
-
-	// Check sets
-	for k, idx := range z.m {
-		func(k interface{}, idx uint) {
-			defer func() {
-				if e := recover(); e != nil {
-					fmt.Println("OFFENDING KEY: ", k)
-					panic(e)
-				}
-			}()
-			set := &z.sets[idx].IntervalSet
-			if set.IsEmpty() {
-				panic("INTERVALSET IS EMPTY")
-			}
-			(&z.sets[idx].IntervalSet).Check()
-		}(k, idx)
-	}
-}
-
 func (z *IntervalMap) AllIntervals() *IntervalSet {
 	s := NewIntervalSetWithCapacity(z.ncap)
-	for k, sidx := range z.m {
+	for _, sidx := range z.m {
 		set := &z.sets[sidx].IntervalSet
-		check(set, fmt.Sprintf("SET %s", k))
 		s.Union(s, set)
-		check(s, fmt.Sprintf("S POST UNION WITH %s", k))
 	}
-	check(s, "S ALL INTERVALS")
 	return s
 }
 
