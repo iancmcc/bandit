@@ -2,8 +2,6 @@ package bandit_test
 
 import (
 	"bytes"
-	"encoding/base64"
-	"fmt"
 
 	. "github.com/iancmcc/bandit"
 	. "github.com/onsi/ginkgo"
@@ -28,7 +26,7 @@ var _ = Describe("Tree", func() {
 
 		Ω(orig.Tree.Dump(&buf)).ShouldNot(HaveOccurred())
 
-		fmt.Println(base64.StdEncoding.EncodeToString(buf.Bytes()))
+		//fmt.Println(base64.StdEncoding.EncodeToString(buf.Bytes()))
 
 		decoded, err := LoadTree(&buf)
 		Ω(err).ShouldNot(HaveOccurred())
