@@ -3,7 +3,7 @@ package bandit
 type (
 	IntervalIterator struct {
 		t         Tree
-		nodestack []uint
+		nodestack []uint32
 		ulstack   []bool
 		ival      Interval
 		done      bool
@@ -37,8 +37,9 @@ func (mi *MapIterator) Next() bool {
 }
 
 func NewIntervalIterator(t Tree) *IntervalIterator {
-	numnodes := len(t.nodes) - int(t.numfree)
-	nodestack := append(make([]uint, 0, numnodes), t.root)
+	//numnodes := len(t.nodes) - int(t.numfree)
+	numnodes := 64
+	nodestack := append(make([]uint32, 0, numnodes), t.root)
 	ulstack := append(make([]bool, 0, numnodes), t.ul)
 	return &IntervalIterator{
 		t:         t,
@@ -57,11 +58,11 @@ func (it *IntervalIterator) Next() bool {
 	}
 	var (
 		l         = len(it.nodestack)
-		n         uint
+		n         uint32
 		ul        bool
 		lul       bool = it.t.ul
-		cur       node
-		idx, left uint
+		cur       *node
+		idx, left uint32
 	)
 	if l == 0 || it.nodestack[0] == 0 {
 		it.done = true
@@ -71,13 +72,13 @@ func (it *IntervalIterator) Next() bool {
 	for ; l > 0; l = len(it.nodestack) {
 		n, it.nodestack = it.nodestack[l-1], it.nodestack[:l-1]
 		ul, it.ulstack = it.ulstack[l-1], it.ulstack[:l-1]
-		cur = it.t.nodes[n]
+		cur = node_from_id(n) //it.t.nodes[n]
 		if cur.level != 0 {
 			// This is an internal node, so add its children (right first, so
 			// we visit left first)
 			it.nodestack = append(it.nodestack, cur.right, cur.left)
 			// Reuse cur for left
-			cur = it.t.nodes[cur.left]
+			cur = node_from_id(cur.left) //it.t.nodes[cur.left]
 			it.ulstack = append(it.ulstack, ul != cur.ul, ul)
 			continue
 		}
@@ -87,7 +88,8 @@ func (it *IntervalIterator) Next() bool {
 			idx = it.ival.Tree.takeOwnership(&it.t, n)
 			if !ul {
 				if it.holeleft {
-					(&it.ival.nodes[idx]).incl = false
+					node_from_id(idx).incl = false
+					//(&it.ival.nodes[idx]).incl = false
 					it.holeleft = false
 					ul = !ul
 				}

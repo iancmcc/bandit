@@ -80,7 +80,7 @@ func (z *IntervalMap) Equals(x *IntervalMap) bool {
 }
 
 func CopySet(x *IntervalSet) *IntervalSet {
-	return NewSet(x.Cap()).Copy(x)
+	return NewSet(0 /*x.Cap()*/).Copy(x)
 }
 
 func (z *IntervalMap) allocset(x *IntervalSet, maxcap uint) (idx uint) {

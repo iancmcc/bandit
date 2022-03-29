@@ -1,6 +1,7 @@
 package bandit
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -20,7 +21,7 @@ func NewIntervalSetWithCapacity(capacity uint, intervals ...Interval) *IntervalS
 	if capacity == 0 {
 		capacity = 1
 	}
-	set := newIntervalSetWithNodeStorage(make([]node, 1, capacity*5+1), intervals...)
+	set := newIntervalSetWithNodeStorage(nil, intervals...)
 	return &set
 }
 
@@ -30,16 +31,18 @@ func NewIntervalSet(intervals ...Interval) *IntervalSet {
 
 func newIntervalSetWithNodeStorage(storage []node, intervals ...Interval) IntervalSet {
 	var set IntervalSet
-	set.nodes = storage[:1]
+	set.Tree.root = alloc_node()
 	for _, ival := range intervals {
 		set.mergeRoot(&set.Tree, &ival.Tree, set.root, ival.root, set.ul, ival.ul, or)
 	}
 	return set
 }
 
+/*
 func (z *IntervalSet) Cap() int {
 	return cap(z.nodes)
 }
+*/
 
 func (z *IntervalSet) Iterator() *IntervalIterator {
 	return NewIntervalIterator(z.Tree)
@@ -67,10 +70,7 @@ func (z *IntervalSet) Copy(x *IntervalSet) *IntervalSet {
 		z.Clear()
 	default:
 		z.root = x.root
-		z.nextfree = x.nextfree
-		z.numfree = x.numfree
 		z.ul = x.ul
-		z.nodes = append(z.nodes[:0:0], x.nodes...)
 	}
 	return z
 }
@@ -104,7 +104,7 @@ func (z *IntervalSet) Cardinality() int {
 		}
 		return 0
 	}
-	i := (&z.nodes[z.root]).count / 2
+	i := node_from_id(z.root).count / 2
 	if z.ul || i == 0 {
 		i += 1
 	}
@@ -181,13 +181,17 @@ func (z *IntervalSet) Union(x, y *IntervalSet) *IntervalSet {
 func (z *IntervalSet) SymmetricDifference(x, y *IntervalSet) *IntervalSet {
 	switch {
 	case x == nil:
+		fmt.Println("X IS NIL")
 		z.Copy(y)
 	case y == nil:
+		fmt.Println("Y IS NIL")
 		z.Copy(x)
 	case z != x && z != y:
+		fmt.Println("CLEAR")
 		z.Clear()
 		fallthrough
 	default:
+		fmt.Println(x.root, y.root)
 		z.mergeRoot(&x.Tree, &y.Tree, x.root, y.root, x.ul, y.ul, xor)
 	}
 	return z
@@ -225,7 +229,7 @@ func (z *IntervalSet) IsUnbounded() bool {
 
 func (z *IntervalSet) IntervalContaining(val uint64) (ival Interval) {
 	idx, ul := z.Tree.leftEdge(val)
-	n := &z.Tree.nodes[idx]
+	n := node_from_id(idx)
 	switch {
 	case idx == 0:
 		if !z.ul {
@@ -245,7 +249,7 @@ func (z *IntervalSet) IntervalContaining(val uint64) (ival Interval) {
 	} else if !ul {
 		return Empty()
 	}
-	n = &z.Tree.nodes[idx]
+	n = node_from_id(idx)
 
 	var rival Interval
 	switch {

@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestBandit(t *testing.T) {
+func XTestBandit(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Bandit Suite")
 }

@@ -9,7 +9,6 @@ type (
 	// Interval is an interval
 	Interval struct {
 		Tree
-		array [7]node
 	}
 
 	// BoundType is a bound type
@@ -37,11 +36,11 @@ var (
 )
 
 func NewInterval(lowerBound BoundType, lower, upper uint64, upperBound BoundType) (ival Interval) {
-	ival.nodes = ival.array[:1] // Fix malloc later; for now we're escaping
 	var (
 		lul, rul    bool
-		left, right uint
+		left, right uint32
 	)
+	ival.Tree.root = alloc_node()
 	switch lowerBound {
 	case UnboundBound:
 		lul = true
@@ -67,22 +66,20 @@ func NewInterval(lowerBound BoundType, lower, upper uint64, upperBound BoundType
 func (ival Interval) Span() uint64 {
 	lidx, _ := ival.Tree.leftmostLeaf(ival.root, ival.ul)
 	ridx, _ := ival.Tree.rightmostLeaf(ival.root, ival.ul)
-	return (&ival.nodes[ridx]).prefix - (&ival.nodes[lidx]).prefix
+	return node_from_id(ridx).prefix - node_from_id(lidx).prefix
 }
 
 func (ival Interval) Lower() uint64 {
 	idx, _ := ival.Tree.leftmostLeaf(ival.root, ival.ul)
-	return ival.nodes[idx].prefix
+	return node_from_id(idx).prefix
 }
 
 func (ival Interval) Upper() uint64 {
 	idx, _ := ival.Tree.rightmostLeaf(ival.root, ival.ul)
-	return ival.nodes[idx].prefix
+	return node_from_id(idx).prefix
 }
 
 func (ival Interval) AsIntervalSet() *IntervalSet {
-	copy(ival.array[:], ival.nodes)
-	ival.nodes = ival.array[:len(ival.nodes)]
 	return &IntervalSet{
 		Tree: ival.Tree,
 	}
@@ -95,7 +92,7 @@ func (ival Interval) String() string {
 		}
 		return empty
 	}
-	n := ival.nodes[ival.root]
+	n := node_from_id(ival.root)
 	if n.level == 0 {
 		// Half-unbounded interval or point
 		if n.boundBoth() {
@@ -107,14 +104,14 @@ func (ival Interval) String() string {
 		}
 		return fmt.Sprintf("%c%d, ∞)", bs[0], n.prefix)
 	}
-	l, r := ival.nodes[n.left], ival.nodes[n.right]
+	l, r := node_from_id(n.left), node_from_id(n.right)
 	lb, rb := boundmap[l.incl][0], boundmap[r.incl][1]
 	return fmt.Sprintf("%c%d, %d%c", lb, l.prefix, r.prefix, rb)
 }
 
 func (ival Interval) Intersection(other Interval) Interval {
 	// Update the slice to point to the array copy
-	ival.nodes = ival.array[:len(ival.nodes)]
+	//ival.nodes = ival.array[:len(ival.nodes)]
 	// Merge onto the copy
 	ival.mergeRoot(&ival.Tree, &other.Tree, ival.root, other.root, ival.ul, other.ul, and)
 	return ival
@@ -122,7 +119,7 @@ func (ival Interval) Intersection(other Interval) Interval {
 
 func (ival Interval) Union(other Interval) Interval {
 	// Update the slice to point to the array copy
-	ival.nodes = ival.array[:len(ival.nodes)]
+	//ival.nodes = ival.array[:len(ival.nodes)]
 	// Merge onto the copy
 	ival.mergeRoot(&ival.Tree, &other.Tree, ival.root, other.root, ival.ul, other.ul, or)
 	return ival
