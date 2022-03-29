@@ -66,7 +66,6 @@ func BenchmarkNodes(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for j := 0; j < b.N; j++ {
-		n.Alloc()
 		n.Free(n.Alloc())
 	}
 }
