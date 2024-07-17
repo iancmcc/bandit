@@ -57,6 +57,23 @@ func TestNodes(t *testing.T) {
 			})
 
 		})
+
+		Convey("should free nodes recursively", func() {
+			a := nodes.Alloc()
+			b := nodes.Alloc()
+			c := nodes.Alloc()
+
+			nodes.Get(a).Left = b
+			nodes.Get(a).Right = c
+
+			nodes.FreeAll(a)
+
+			Convey("and reuse freed nodes", func() {
+				reused := []NodeID{nodes.Alloc(), nodes.Alloc(), nodes.Alloc()}
+				So(reused, ShouldResemble, []NodeID{a, c, b})
+			})
+
+		})
 	})
 
 }

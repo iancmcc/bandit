@@ -48,7 +48,7 @@ func (n *Nodes) Alloc() NodeID {
 		return idx
 	}
 	if n.remaining == 0 && n.num_free == 0 {
-		new_bucket := make([]Node, n.bucket_size, n.bucket_size)
+		new_bucket := make([]Node, n.bucket_size)
 		n.storage = append(n.storage, new_bucket)
 		n.remaining = n.bucket_size
 	}
@@ -61,4 +61,15 @@ func (n *Nodes) Free(id NodeID) {
 	*(n.Get(id)) = Node{Left: n.next_free}
 	n.next_free = id
 	n.num_free += 1
+}
+
+func (n *Nodes) FreeAll(id NodeID) {
+	node := n.Get(id)
+	if node.Left > 0 {
+		n.FreeAll(node.Left)
+	}
+	if node.Right > 0 {
+		n.FreeAll(node.Right)
+	}
+	n.Free(id)
 }
